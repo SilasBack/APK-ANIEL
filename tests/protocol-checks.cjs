@@ -154,6 +154,40 @@ async function run(){
  assert.equal(remainingMulti.length, 1);
  assert.equal(remainingMulti[0].login, 'test-user-2');
 
- console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais, edição de campos únicos, URLs/remoção de vídeo, status de atendimento, auto-limpeza 1GB e multi-contas. Nenhuma conexão real.');
+ // BaixarRDO checks: duplicate rows, ocultar:"N", C# DateTime.MinValue horaInicio, 12h AM/PM ASCII format
+ assert.equal(protocol.parseServerDate('/Date(-62135596800000)/'), null);
+ assert.ok(protocol.parseServerDate('/Date(1794920000000-0300)/') instanceof Date);
+ assert.equal(api.isEndingHidden({ codigo: 1, ocultar: 'N' }), false);
+ assert.equal(api.isEndingHidden({ codigo: 1, ocultar: 'S' }), true);
+ const closeActor = { ...actor, data: { login: 'test-user', funcionario: { nome: 'Test' } } };
+ const closeRaw = { ...raw, codTipoServico: 106, horaInicio: '/Date(-62135596800000)/', exigeCheckList: false };
+ const closeRdo = { ...rdo, raw: closeRaw };
+ const endingRow = { codigo: 10, descricao: 'CONCLUIDO', status: '2', ocultar: 'N' };
+ replies = [
+   ok([closeRaw, closeRaw]), // duplicate identical open RDO rows!
+   ok([endingRow]),          // GetEncerramentoByContrato
+   ok([{ id: 1, nomeDocumento: 'vid.mp4', extensao: 'mp4', caminho: '/vid.mp4', uuId: 'u', tamanho: '1 MB', isRDO: true }]), // CarregarArquivos
+   ok({ questionarios: [], questionariosFeitos: [] }), // Quiz
+   { result: true },         // BaixarRDO
+ ];
+ calls = [];
+ const closedOk = await api.baixarRdoAsync(closeActor, closeRdo, {
+   encerramento: endingRow,
+   observacao: 'Teste concluido',
+   latitude: -23.5,
+   longitude: -46.6,
+   startDate: new Date(2026, 10, 17, 9, 15, 0),
+   endDate: new Date(2026, 10, 17, 10, 30, 0),
+ });
+ assert.equal(closedOk, true);
+ const baixarCall = calls.find(x => x.url.endsWith('/BaixarRDO'));
+ assert.ok(baixarCall);
+ assert.equal(baixarCall.body.objeto.horaInicio, 'Nov 17, 2026 9:15:00 AM');
+ assert.equal(baixarCall.body.objeto.horaTermino, 'Nov 17, 2026 10:30:00 AM');
+ assert.equal(baixarCall.body.objeto.rdo.horaInicio, 'Nov 17, 2026 9:15:00 AM');
+ assert.equal(baixarCall.body.objeto.rdo.horaTermino, 'Nov 17, 2026 10:30:00 AM');
+ assert.ok(/ (AM|PM)$/.test(baixarCall.body.objeto.dataProd));
+
+ console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais, edição de campos únicos, URLs/remoção de vídeo, status de atendimento, auto-limpeza 1GB, multi-contas e BaixarRDO. Nenhuma conexão real.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});

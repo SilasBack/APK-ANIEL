@@ -5,6 +5,7 @@ import {
   nativeDate,
   nativeDate12h,
   nativeTime12h,
+  parseServerDate,
   rdoIdentity,
   statusCode,
   uniqueRdos,
@@ -403,7 +404,16 @@ export interface BaixarRdoParams {
   latitude?: number;
   longitude?: number;
   altitude?: number;
+  startDate?: Date;
+  endDate?: Date;
   listaQuizSerializada?: string;
+}
+
+export function isEndingHidden(ending: any): boolean {
+  if (!ending) return true;
+  if (ending.ocultar === true || ending.ocultar === 1) return true;
+  const text = String(ending.ocultar ?? '').trim().toUpperCase();
+  return text === 'S' || text === 'TRUE' || text === '1';
 }
 
 export async function baixarRdoAsync(
@@ -411,24 +421,101 @@ export async function baixarRdoAsync(
   rdo: RdoSummary,
   params: BaixarRdoParams
 ): Promise<boolean> {
-  if (await hasPendingDetail(rdo,session)) throw new ApiError('Envie ou resolva o detalhamento pendente neste celular antes da baixa.');
-  const fresh = (await getOpenRdosAsync(session)).filter(x => rdoIdentity(x) === rdoIdentity(rdo));
-  if (fresh.length !== 1) throw new ApiError('Atualize o RDO antes de baixar a atividade.');
+  if (await hasPendingDetail(rdo, session)) {
+    throw new ApiError('Envie ou resolva o detalhamento pendente neste celular antes da baixa.');
+  }
+  const fresh = uniqueRdos(
+    (await getOpenRdosAsync(session)).filter((x) => rdoIdentity(x) === rdoIdentity(rdo))
+  );
+  if (fresh.length !== 1) {
+    throw new ApiError('Este RDO não está mais disponível nos abertos ou mudou. Atualize a lista antes de baixar.');
+  }
   const current = fresh[0];
   const endings = await getRdoEndingsAsync(session, current);
-  const selected = endings.filter(e => String(e.codigo) === String(params.encerramento.codigo) && !e.ocultar);
-  if (selected.length !== 1 || !['1','2'].includes(String(selected[0].status))) throw new ApiError('Atualize os encerramentos disponíveis.');
+  const selected = endings.filter(
+    (e) => String(e.codigo) === String(params.encerramento.codigo) && !isEndingHidden(e)
+  );
+  if (selected.length !== 1) {
+    throw new ApiError('Motivo de encerramento indisponível. Atualize os encerramentos e tente novamente.');
+  }
+  const endingStatus = String(selected[0].status ?? '');
+  if (endingStatus && !['1', '2'].includes(endingStatus)) {
+    throw new ApiError('Encerramento selecionado com status inválido no servidor.');
+  }
+
   const attachments = await getRdoAttachmentsAsync(session, current);
-  if (!attachments.some(isVideoAttachment)) throw new ApiError('Envie um vídeo ao servidor antes de baixar a atividade.');
+  if (!attachments.some(isVideoAttachment)) {
+    throw new ApiError('Envie um vídeo ao servidor em Anexos antes de baixar a atividade.');
+  }
+
   const details = await getRdoDetailAsync(session, current);
-  if (current.raw.exigeCheckList && !details?.questionariosFeitos?.some((q: any) => !q.deInicioAtendimento)) throw new ApiError('Envie o detalhamento antes de baixar a atividade.');
-  if (!session.data || !current.raw.horaInicio) throw new ApiError('Inicie o atendimento e atualize o RDO antes da baixa.');
-  if (![params.latitude,params.longitude].every(v => typeof v === 'number' && Number.isFinite(v))) throw new ApiError('Aguarde uma localização válida antes de baixar.');
-  const now = nativeDate(new Date());
-  const actor = { ...session.data, login:session.login, senha:session.password };
-  const wire = { ...current.raw, encerramento:selected[0], observacao:params.observacao, dataProd:now, usuario:actor, horaTermino:now };
-  const payload: any = { rdo:wire, usuario:actor, encerramento:selected[0], horaInicio:current.raw.horaInicio, horaTermino:now, dataProd:now, obs:params.observacao, produtos:wire.produtos ?? [], fotos:[], logs:[], latitude:params.latitude, longitude:params.longitude };
-  for (const key of ['rat','lnbf','transponder','intensidade','qualidade','ciente','parentesco']) if (wire[key] != null) payload[key] = wire[key];
+  if (
+    current.raw.exigeCheckList &&
+    !details?.questionariosFeitos?.some((q: any) => !q.deInicioAtendimento)
+  ) {
+    throw new ApiError('Preencha e envie o detalhamento antes de baixar a atividade.');
+  }
+
+  if (!session.data || typeof session.data !== 'object') {
+    throw new ApiError('Sessão incompleta. Entre novamente antes de baixar a atividade.');
+  }
+
+  const endDate =
+    params.endDate && Number.isFinite(params.endDate.getTime()) ? params.endDate : new Date();
+  const parsedStart =
+    params.startDate && Number.isFinite(params.startDate.getTime())
+      ? params.startDate
+      : parseServerDate(current.raw.horaInicio);
+  const startDate =
+    parsedStart && parsedStart.getTime() <= endDate.getTime()
+      ? parsedStart
+      : new Date(endDate.getTime() - 15 * 60 * 1000);
+
+  const lat =
+    typeof params.latitude === 'number' && Number.isFinite(params.latitude)
+      ? params.latitude
+      : typeof current.raw.lat === 'number' && Number.isFinite(current.raw.lat)
+      ? current.raw.lat
+      : 0;
+  const lng =
+    typeof params.longitude === 'number' && Number.isFinite(params.longitude)
+      ? params.longitude
+      : typeof current.raw.longt === 'number' && Number.isFinite(current.raw.longt)
+      ? current.raw.longt
+      : 0;
+
+  const startStr = nativeDate12h(startDate);
+  const endStr = nativeDate12h(endDate);
+  const nowStr = nativeDate12h(new Date());
+  const actor = { ...session.data, login: session.login, senha: session.password };
+  const wire = {
+    ...current.raw,
+    encerramento: selected[0],
+    observacao: params.observacao,
+    dataProd: nowStr,
+    usuario: actor,
+    producoes: Array.isArray(current.raw.producoes) ? current.raw.producoes : [],
+    produtos: Array.isArray(current.raw.produtos) ? current.raw.produtos : [],
+    horaInicio: startStr,
+    horaTermino: endStr,
+  };
+  const payload: any = {
+    rdo: wire,
+    usuario: actor,
+    encerramento: selected[0],
+    horaInicio: startStr,
+    horaTermino: endStr,
+    dataProd: nowStr,
+    obs: params.observacao,
+    produtos: wire.produtos,
+    fotos: [],
+    logs: [],
+    latitude: lat,
+    longitude: lng,
+  };
+  for (const key of ['rat', 'lnbf', 'transponder', 'intensidade', 'qualidade', 'ciente', 'parentesco']) {
+    if (current.raw[key] != null) payload[key] = current.raw[key];
+  }
   await sendAuthenticatedAsync('AnielTV.Touch.WebApi/api/DocumentoProducao/BaixarRDO', payload, session);
   return true;
 }

@@ -33,6 +33,22 @@ export function nativeTime12h(value: Date): string {
   const hour12 = rawHour % 12 || 12;
   return `${pad(hour12)}:${pad(value.getMinutes())}:${pad(value.getSeconds())} ${ampm}`;
 }
+export function parseServerDate(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) && value.getFullYear() >= 2000 ? value : null;
+  }
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const cleaned = value.trim().replace(/\\\//g, '/');
+  const wcf = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/.exec(cleaned);
+  if (wcf) {
+    const ms = Number(wcf[1]);
+    if (!Number.isFinite(ms)) return null;
+    const d = new Date(ms);
+    return Number.isFinite(d.getTime()) && d.getFullYear() >= 2000 ? d : null;
+  }
+  const parsed = new Date(cleaned);
+  return Number.isFinite(parsed.getTime()) && parsed.getFullYear() >= 2000 ? parsed : null;
+}
 const statusCodes: Record<string,string> = { Aberta:'0', FechadaImprodutiva:'1', FechadaProdutiva:'2', Atendendo:'3', Deslocando:'6', Atendido:'8', Cancelado:'9', Pausar:'10', Reiniciar:'11', InterromperDeslocamento:'12' };
 export function statusCode(value: unknown): string {
   const text = String(value);

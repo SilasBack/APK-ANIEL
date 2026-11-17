@@ -8,12 +8,15 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { LoginSession, RdoSummary, Encerramento } from '../types';
-import { getRdoEndingsAsync, baixarRdoAsync } from '../services/apiClient';
+import { getRdoEndingsAsync, baixarRdoAsync, isEndingHidden } from '../services/apiClient';
+import { parseServerDate } from '../services/rdoProtocol';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
@@ -23,14 +26,40 @@ interface Props {
   onSuccess: () => void;
 }
 
+function toHHMM(d: Date): string {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function parseHHMMOnToday(text: string): Date | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  const d = new Date();
+  d.setHours(h, min, 0, 0);
+  return d;
+}
+
 export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props) {
   const { colors } = useTheme();
   const styles = useThemedStyles(baseStyles);
+  const insets = useSafeAreaInsets();
+
+  const initialEnd = new Date();
+  const initialStart =
+    parseServerDate(rdo.raw?.horaInicio) || new Date(initialEnd.getTime() - 15 * 60 * 1000);
+
   const [endings, setEndings] = useState<Encerramento[]>([]);
   const [loadingEndings, setLoadingEndings] = useState(true);
   const [selectedEnding, setSelectedEnding] = useState<Encerramento | null>(null);
+  const [startTimeText, setStartTimeText] = useState<string>(toHHMM(initialStart));
+  const [endTimeText, setEndTimeText] = useState<string>(toHHMM(initialEnd));
   const [observation, setObservation] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [loadingGps, setLoadingGps] = useState(false);
   const [locationStatus, setLocationStatus] = useState<string>('Obtendo GPS...');
   const [currentCoords, setCurrentCoords] = useState<{
     latitude: number;
@@ -38,17 +67,15 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
     altitude: number;
   }>({ latitude: NaN, longitude: NaN, altitude: 0 });
 
-
-
   async function loadData() {
     setLoadingEndings(true);
     try {
-      const list = await getRdoEndingsAsync(session, rdo);
+      const list = (await getRdoEndingsAsync(session, rdo)).filter((e) => !isEndingHidden(e));
       setEndings(list);
       if (list.length > 0) {
         setSelectedEnding(list[0]);
       }
-    } catch (err: any) {
+    } catch {
       Alert.alert('Aviso', 'Não foi possível carregar os encerramentos reais do servidor.');
     } finally {
       setLoadingEndings(false);
@@ -56,11 +83,24 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
   }
 
   async function requestLocation() {
+    setLoadingGps(true);
+    setLocationStatus('Obtendo GPS...');
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setLocationStatus('GPS desabilitado / permissão negada');
+        setLocationStatus('Permissão de GPS negada (usará coordenadas do RDO)');
         return;
+      }
+      const last = await Location.getLastKnownPositionAsync({});
+      if (last) {
+        setCurrentCoords({
+          latitude: last.coords.latitude,
+          longitude: last.coords.longitude,
+          altitude: last.coords.altitude || 0,
+        });
+        setLocationStatus(
+          `GPS: ${last.coords.latitude.toFixed(5)}, ${last.coords.longitude.toFixed(5)}`
+        );
       }
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
@@ -72,26 +112,39 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
       });
       setLocationStatus(`GPS: ${loc.coords.latitude.toFixed(5)}, ${loc.coords.longitude.toFixed(5)}`);
     } catch {
-      setLocationStatus('GPS não disponível');
+      setLocationStatus((prev) =>
+        prev.startsWith('GPS:') ? prev : 'GPS indisponível no momento (usará coordenadas do RDO)'
+      );
+    } finally {
+      setLoadingGps(false);
     }
   }
 
   useEffect(() => {
-    loadData();
-    requestLocation();
+    void loadData();
+    void requestLocation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleConfirm() {
-    if (!Number.isFinite(currentCoords.latitude) || !Number.isFinite(currentCoords.longitude)) {
-      Alert.alert('Localização necessária', 'Aguarde uma localização válida antes de baixar a atividade.'); return;
-    }
     if (!selectedEnding) {
       Alert.alert('Atenção', 'Selecione o motivo de encerramento.');
       return;
     }
 
-    // Check if contract requires observation
-    const requiresObs = rdo.raw?.obrigaObservacao === true || rdo.raw?.contrato?.isObrigaObservacao === true;
+    const startDate = parseHHMMOnToday(startTimeText);
+    const endDate = parseHHMMOnToday(endTimeText);
+    if (!startDate || !endDate) {
+      Alert.alert('Horário inválido', 'Informe Hora Início e Hora Término no formato HH:mm (ex: 09:30).');
+      return;
+    }
+    if (endDate.getTime() < startDate.getTime()) {
+      Alert.alert('Horário inválido', 'A Hora Término precisa ser igual ou posterior à Hora Início.');
+      return;
+    }
+
+    const requiresObs =
+      rdo.raw?.obrigaObservacao === true || rdo.raw?.contrato?.isObrigaObservacao === true;
     if (requiresObs && !observation.trim()) {
       Alert.alert('Observação obrigatória', 'Este contrato exige preenchimento do campo de observação.');
       return;
@@ -102,21 +155,23 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
       `Deseja realmente baixar e encerrar o RDO #${rdo.number} com o encerramento "${selectedEnding.descricao}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Confirmar e Baixar', style: 'default', onPress: executeBaixa },
+        { text: 'Confirmar e Baixar', style: 'default', onPress: () => void executeBaixa(startDate, endDate) },
       ]
     );
   }
 
-  async function executeBaixa() {
+  async function executeBaixa(startDate: Date, endDate: Date) {
     if (!selectedEnding) return;
     setSubmitting(true);
     try {
       const success = await baixarRdoAsync(session, rdo, {
         encerramento: selectedEnding,
         observacao: observation.trim(),
-        latitude: currentCoords.latitude,
-        longitude: currentCoords.longitude,
+        latitude: Number.isFinite(currentCoords.latitude) ? currentCoords.latitude : undefined,
+        longitude: Number.isFinite(currentCoords.longitude) ? currentCoords.longitude : undefined,
         altitude: currentCoords.altitude,
+        startDate,
+        endDate,
       });
 
       if (success) {
@@ -136,7 +191,7 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* App Bar */}
       <View style={styles.appBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn} disabled={submitting}>
@@ -144,105 +199,168 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
         </TouchableOpacity>
         <View style={styles.appBarTitleBox}>
           <Text style={styles.appBarTitle}>Baixar Atividade</Text>
-          <Text style={styles.appBarSubtitle}>RDO #{rdo.number}</Text>
+          <Text style={styles.appBarSubtitle}>
+            RDO #{rdo.number} · Conta {session.login}
+          </Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {/* RDO Summary */}
-        <View style={styles.card}>
-          <Text style={styles.cardHeader}>Resumo da Atividade</Text>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>INEP / Projeto:</Text>
-            <Text style={styles.summaryValue}>{rdo.project}</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Tipo de Serviço:</Text>
-            <Text style={styles.summaryValue}>{rdo.service}</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Técnico Responsável:</Text>
-            <Text style={styles.summaryValue}>{session.name}</Text>
-          </View>
-          <View style={styles.gpsRow}>
-            <MaterialIcons name="my-location" size={16} color={colors.primarySoftText} />
-            <Text style={styles.gpsText}>{locationStatus}</Text>
-          </View>
-        </View>
-
-        {/* Encerramento Selection */}
-        <View style={styles.card}>
-          <Text style={styles.cardHeader}>Motivo de Encerramento *</Text>
-          {loadingEndings ? (
-            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 16 }} />
-          ) : endings.length === 0 ? (
-            <Text style={styles.emptyText}>Nenhum motivo de encerramento disponível.</Text>
-          ) : (
-            <View style={styles.endingsList}>
-              {endings.map((enc) => {
-                const isSelected = selectedEnding?.codigo === enc.codigo;
-                return (
-                  <TouchableOpacity
-                    key={String(enc.codigo)}
-                    style={[styles.endingItem, isSelected && styles.endingItemSelected]}
-                    onPress={() => setSelectedEnding(enc)}
-                  >
-                    <MaterialIcons
-                      name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
-                      size={20}
-                      color={isSelected ? colors.primarySoftText : colors.placeholder}
-                    />
-                    <Text
-                      style={[
-                        styles.endingText,
-                        isSelected && styles.endingTextSelected,
-                      ]}
-                    >
-                      {enc.descricao}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {/* RDO Summary */}
+          <View style={styles.card}>
+            <Text style={styles.cardHeader}>Resumo da Atividade</Text>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>INEP / Projeto:</Text>
+              <Text style={styles.summaryValue}>{rdo.project}</Text>
             </View>
-          )}
-        </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Tipo de Serviço:</Text>
+              <Text style={styles.summaryValue}>{rdo.service}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Técnico Responsável:</Text>
+              <Text style={styles.summaryValue}>{session.name}</Text>
+            </View>
+            <View style={styles.gpsRow}>
+              <MaterialIcons name="my-location" size={16} color={colors.primarySoftText} />
+              <Text style={styles.gpsText}>{locationStatus}</Text>
+              <TouchableOpacity
+                onPress={requestLocation}
+                disabled={loadingGps || submitting}
+                style={styles.gpsRetryBtn}
+              >
+                {loadingGps ? (
+                  <ActivityIndicator size="small" color={colors.primarySoftText} />
+                ) : (
+                  <MaterialIcons name="refresh" size={16} color={colors.primarySoftText} />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
 
-        {/* Observation */}
-        <View style={styles.card}>
-          <Text style={styles.cardHeader}>Observações do Fechamento</Text>
-          <TextInput
-            style={styles.obsInput}
-            placeholder="Digite detalhes da conclusão da atividade..."
-            placeholderTextColor={colors.placeholder}
-            multiline
-            numberOfLines={4}
-            value={observation}
-            onChangeText={setObservation}
-            textAlignVertical="top"
-          />
-        </View>
+          {/* Horários de Atendimento */}
+          <View style={styles.card}>
+            <Text style={styles.cardHeader}>Horário de Execução</Text>
+            <View style={styles.timeRow}>
+              <View style={styles.timeCol}>
+                <Text style={styles.timeLabel}>Hora Início (HH:mm)</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={startTimeText}
+                  onChangeText={setStartTimeText}
+                  placeholder="09:00"
+                  placeholderTextColor={colors.placeholder}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                  editable={!submitting}
+                />
+              </View>
+              <View style={styles.timeCol}>
+                <Text style={styles.timeLabel}>Hora Término (HH:mm)</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={endTimeText}
+                  onChangeText={setEndTimeText}
+                  placeholder="10:00"
+                  placeholderTextColor={colors.placeholder}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                  editable={!submitting}
+                />
+              </View>
+            </View>
+          </View>
 
-        {/* Submit Button */}
-        <TouchableOpacity
-          style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-          onPress={handleConfirm}
-          disabled={submitting}
+          {/* Encerramento Selection */}
+          <View style={styles.card}>
+            <Text style={styles.cardHeader}>Motivo de Encerramento *</Text>
+            {loadingEndings ? (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 16 }} />
+            ) : endings.length === 0 ? (
+              <Text style={styles.emptyText}>Nenhum motivo de encerramento disponível.</Text>
+            ) : (
+              <View style={styles.endingsList}>
+                {endings.map((enc) => {
+                  const isSelected = String(selectedEnding?.codigo) === String(enc.codigo);
+                  return (
+                    <TouchableOpacity
+                      key={String(enc.codigo)}
+                      style={[styles.endingItem, isSelected && styles.endingItemSelected]}
+                      onPress={() => setSelectedEnding(enc)}
+                      disabled={submitting}
+                    >
+                      <MaterialIcons
+                        name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
+                        size={20}
+                        color={isSelected ? colors.primarySoftText : colors.placeholder}
+                      />
+                      <Text
+                        style={[
+                          styles.endingText,
+                          isSelected && styles.endingTextSelected,
+                        ]}
+                      >
+                        {enc.descricao}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
+          {/* Observation */}
+          <View style={styles.card}>
+            <Text style={styles.cardHeader}>Observações do Fechamento</Text>
+            <TextInput
+              style={styles.obsInput}
+              placeholder="Digite detalhes da conclusão da atividade..."
+              placeholderTextColor={colors.placeholder}
+              multiline
+              numberOfLines={4}
+              value={observation}
+              onChangeText={setObservation}
+              textAlignVertical="top"
+              editable={!submitting}
+            />
+          </View>
+        </ScrollView>
+
+        {/* Pinned Bottom Submit Bar — safely above Android nav bar */}
+        <View
+          style={[
+            styles.footerBar,
+            { paddingBottom: Math.max(insets.bottom, 14) + 10 },
+          ]}
         >
-          {submitting ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <>
-              <MaterialIcons name="check" size={24} color="#FFF" />
-              <Text style={styles.submitBtnText}>Confirmar e Baixar RDO</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
+          <TouchableOpacity
+            style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+            onPress={handleConfirm}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <>
+                <MaterialIcons name="check" size={24} color="#FFF" />
+                <Text style={styles.submitBtnText}>Confirmar e Baixar RDO</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const baseStyles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#F7FAFC',
@@ -274,13 +392,13 @@ const baseStyles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 24,
   },
   card: {
     backgroundColor: '#FFF',
     borderRadius: 14,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#EDF2F7',
   },
@@ -315,10 +433,39 @@ const baseStyles = StyleSheet.create({
     borderRadius: 8,
   },
   gpsText: {
+    flex: 1,
     fontSize: 12,
     color: '#08776F',
     fontWeight: '500',
     marginLeft: 6,
+  },
+  gpsRetryBtn: {
+    padding: 4,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timeCol: {
+    flex: 1,
+  },
+  timeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4A5568',
+    marginBottom: 6,
+  },
+  timeInput: {
+    backgroundColor: '#F7FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 44,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A202C',
+    textAlign: 'center',
   },
   emptyText: {
     fontSize: 13,
@@ -360,23 +507,29 @@ const baseStyles = StyleSheet.create({
     padding: 12,
     fontSize: 14,
     color: '#1A202C',
-    height: 100,
+    minHeight: 96,
+  },
+  footerBar: {
+    backgroundColor: '#FFF',
+    borderTopWidth: 1,
+    borderTopColor: '#EDF2F7',
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
   submitBtn: {
     backgroundColor: '#08776F',
+    height: 52,
+    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    height: 52,
-    borderRadius: 12,
-    marginTop: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
+    shadowColor: '#08776F',
+    shadowOpacity: 0.25,
     shadowRadius: 6,
     elevation: 3,
   },
   submitBtnDisabled: {
-    opacity: 0.6,
+    opacity: 0.65,
   },
   submitBtnText: {
     color: '#FFF',
