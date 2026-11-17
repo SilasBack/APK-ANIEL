@@ -23,6 +23,7 @@ import { detailImageSource } from '../services/detailWorkflow';
 import { CONFIG } from '../constants/config';
 import { VideoPlayerModal } from '../components/VideoPlayerModal';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { updateCachedRdo } from './RdoListScreen';
 
 interface Props {
   session: LoginSession;
@@ -121,6 +122,7 @@ export function RdoDetailScreen({
                 setCurrentStatus(updated.status);
                 rdo.status = updated.status;
                 rdo.raw = updated.raw;
+                updateCachedRdo(updated);
               } else if (targetStatus !== 'Deslocando') {
                 setCurrentStatus(targetStatus);
                 rdo.status = targetStatus;
@@ -128,6 +130,7 @@ export function RdoDetailScreen({
                   ...rdo.raw,
                   statusExecucao: targetStatus === 'Atendendo' ? '3' : '8',
                 };
+                updateCachedRdo(rdo);
               }
               Alert.alert(
                 'Sucesso',

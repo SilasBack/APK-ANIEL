@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Alert,
   ScrollView,
+  AppState,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -24,6 +25,54 @@ import {
   inspectAppStorageAsync,
   StorageStats,
 } from '../services/storageCleanup';
+
+export const AUTO_REFRESH_INTERVAL_MS = 2 * 60 * 1000; // 2 minutos
+
+interface CachedListEntry {
+  rdos: RdoSummary[];
+  errors: string[];
+  updatedAt: number;
+}
+
+const rdoListCache = new Map<string, CachedListEntry>();
+
+export function clearRdoListCache() {
+  rdoListCache.clear();
+}
+
+export function updateCachedRdo(updated: RdoSummary) {
+  for (const [key, entry] of rdoListCache.entries()) {
+    let changed = false;
+    const nextRdos = entry.rdos.map((item) => {
+      if (
+        item.number === updated.number &&
+        item.contract === updated.contract &&
+        item.project === updated.project &&
+        String(item.raw?.contrato ?? '') === String(updated.raw?.contrato ?? '')
+      ) {
+        changed = true;
+        return {
+          ...updated,
+          accountLogin: item.accountLogin,
+          accountName: item.accountName,
+          accountTeam: item.accountTeam,
+        };
+      }
+      return item;
+    });
+    if (changed) {
+      rdoListCache.set(key, { ...entry, rdos: nextRdos });
+    }
+  }
+}
+
+function formatClockTime(ts: number | null): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
 
 interface Props {
   sessions: LoginSession[];
@@ -51,9 +100,18 @@ export function RdoListScreen({
   const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<'abertos' | 'fechados'>('abertos');
+  const cacheKey = `${activeTab}|${selectedAccount.toLowerCase()}|${sessions
+    .map((s) => s.login.toLowerCase())
+    .sort()
+    .join(',')}`;
+  const initialCached = rdoListCache.get(cacheKey);
+
   const [loading, setLoading] = useState(false);
-  const [rdos, setRdos] = useState<RdoSummary[]>([]);
-  const [loadErrors, setLoadErrors] = useState<string[]>([]);
+  const [rdos, setRdos] = useState<RdoSummary[]>(initialCached?.rdos ?? []);
+  const [loadErrors, setLoadErrors] = useState<string[]>(initialCached?.errors ?? []);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(
+    initialCached?.updatedAt ?? null
+  );
   const [search, setSearch] = useState('');
   const [cleanupVisible, setCleanupVisible] = useState(false);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
@@ -100,64 +158,102 @@ export function RdoListScreen({
   }, []);
 
   const requestRef = useRef(0);
-  const fetchRdos = useCallback(async () => {
-    const id = ++requestRef.current;
-    setLoading(true);
-    setLoadErrors([]);
-    try {
-      const now = new Date();
-      const startStr = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('pt-BR');
-      const endStr = now.toLocaleDateString('pt-BR');
-      const targets =
-        selectedAccount === 'ALL'
-          ? sessions
-          : sessions.filter((s) => s.login.toLowerCase() === selectedAccount.toLowerCase());
+  const fetchRdos = useCallback(
+    async (silent = false) => {
+      const id = ++requestRef.current;
+      setLoading(true);
+      setLoadErrors([]);
+      try {
+        const now = new Date();
+        const startStr = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('pt-BR');
+        const endStr = now.toLocaleDateString('pt-BR');
+        const targets =
+          selectedAccount === 'ALL'
+            ? sessions
+            : sessions.filter((s) => s.login.toLowerCase() === selectedAccount.toLowerCase());
 
-      const results = await Promise.allSettled(
-        targets.map(async (acc) => {
-          const list =
-            activeTab === 'abertos'
-              ? await getOpenRdosAsync(acc)
-              : await getClosedRdosAsync(acc, startStr, endStr);
-          return list.map((item) => ({
-            ...item,
-            accountLogin: acc.login,
-            accountName: acc.name,
-            accountTeam: acc.team,
-          }));
-        })
-      );
+        const results = await Promise.allSettled(
+          targets.map(async (acc) => {
+            const list =
+              activeTab === 'abertos'
+                ? await getOpenRdosAsync(acc)
+                : await getClosedRdosAsync(acc, startStr, endStr);
+            return list.map((item) => ({
+              ...item,
+              accountLogin: acc.login,
+              accountName: acc.name,
+              accountTeam: acc.team,
+            }));
+          })
+        );
 
-      if (id !== requestRef.current) return;
-      const combined: RdoSummary[] = [];
-      const errors: string[] = [];
-      results.forEach((res, idx) => {
-        const acc = targets[idx];
-        if (res.status === 'fulfilled') {
-          combined.push(...res.value);
-        } else {
-          errors.push(
-            `Conta ${acc.login}: ${res.reason?.message || 'Falha na comunicação com o servidor.'}`
-          );
+        if (id !== requestRef.current) return;
+        const combined: RdoSummary[] = [];
+        const errors: string[] = [];
+        results.forEach((res, idx) => {
+          const acc = targets[idx];
+          if (res.status === 'fulfilled') {
+            combined.push(...res.value);
+          } else {
+            errors.push(
+              `Conta ${acc.login}: ${res.reason?.message || 'Falha na comunicação com o servidor.'}`
+            );
+          }
+        });
+
+        const updatedAt = Date.now();
+        rdoListCache.set(cacheKey, { rdos: combined, errors, updatedAt });
+        setRdos(combined);
+        setLoadErrors(errors);
+        setLastUpdatedAt(updatedAt);
+        if (!silent && errors.length > 0 && combined.length === 0 && targets.length === 1) {
+          Alert.alert('Erro ao carregar RDOs', errors[0]);
         }
-      });
-
-      setRdos(combined);
-      setLoadErrors(errors);
-      if (errors.length > 0 && combined.length === 0 && targets.length === 1) {
-        Alert.alert('Erro ao carregar RDOs', errors[0]);
+      } finally {
+        if (id === requestRef.current) setLoading(false);
       }
-    } finally {
-      if (id === requestRef.current) setLoading(false);
-    }
-  }, [activeTab, sessions, selectedAccount]);
+    },
+    [activeTab, sessions, selectedAccount, cacheKey]
+  );
 
+  // Restore cache immediately when switching back within 2 min; auto-fetch only if stale or missing
   useEffect(() => {
-    void fetchRdos();
+    const cached = rdoListCache.get(cacheKey);
+    const isFresh = cached && Date.now() - cached.updatedAt < AUTO_REFRESH_INTERVAL_MS;
+    if (isFresh) {
+      setRdos(cached.rdos);
+      setLoadErrors(cached.errors);
+      setLastUpdatedAt(cached.updatedAt);
+      return;
+    }
+    void fetchRdos(false);
     return () => {
       requestRef.current++;
     };
-  }, [fetchRdos]);
+  }, [cacheKey, fetchRdos]);
+
+  // Automatic refresh whenever 2 minutes pass without an update
+  useEffect(() => {
+    if (!lastUpdatedAt) return;
+    const elapsed = Date.now() - lastUpdatedAt;
+    const waitMs = Math.max(1000, AUTO_REFRESH_INTERVAL_MS - elapsed);
+    const timer = setTimeout(() => {
+      void fetchRdos(true);
+    }, waitMs);
+    return () => clearTimeout(timer);
+  }, [lastUpdatedAt, fetchRdos]);
+
+  // Refresh automatically when returning to foreground after >= 2 min without update
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      const cached = rdoListCache.get(cacheKey);
+      if (!cached || Date.now() - cached.updatedAt >= AUTO_REFRESH_INTERVAL_MS) {
+        void fetchRdos(true);
+      }
+    });
+    return () => sub.remove();
+  }, [cacheKey, fetchRdos]);
 
   const filteredRdos = rdos.filter((r) => {
     if (!search.trim()) return true;
@@ -419,9 +515,28 @@ export function RdoListScreen({
         )}
       </View>
 
-      <Text style={{ paddingHorizontal: 20, marginBottom: 4, color: colors.textSecondary, fontSize: 12 }}>
-        {filteredRdos.length} encontrado(s) de {rdos.length} RDOs
-      </Text>
+      {/* Count + Manual Refresh Bar */}
+      <View style={styles.syncRow}>
+        <Text style={styles.syncInfoText} numberOfLines={1}>
+          {filteredRdos.length} de {rdos.length} RDO(s)
+          {lastUpdatedAt ? ` · Atualizado às ${formatClockTime(lastUpdatedAt)}` : ''}
+        </Text>
+        <TouchableOpacity
+          style={[styles.manualRefreshBtn, loading && styles.manualRefreshBtnDisabled]}
+          onPress={() => void fetchRdos(false)}
+          disabled={loading}
+          accessibilityLabel="Atualizar lista de RDOs manualmente"
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.primarySoftText} />
+          ) : (
+            <MaterialIcons name="refresh" size={16} color={colors.primarySoftText} />
+          )}
+          <Text style={styles.manualRefreshText}>
+            {loading ? 'Atualizando…' : 'Atualizar'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {/* List */}
       {loading && rdos.length === 0 ? (
@@ -442,7 +557,7 @@ export function RdoListScreen({
           refreshControl={
             <RefreshControl
               refreshing={loading}
-              onRefresh={fetchRdos}
+              onRefresh={() => void fetchRdos(false)}
               colors={[colors.primary]}
               tintColor={colors.primary}
             />
@@ -732,6 +847,38 @@ const baseStyles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#2D3748',
+  },
+  syncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  syncInfoText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#4A5568',
+  },
+  manualRefreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#E6F4F1',
+    borderWidth: 1,
+    borderColor: '#B2DFDB',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  manualRefreshBtnDisabled: {
+    opacity: 0.7,
+  },
+  manualRefreshText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#08776F',
   },
   listContent: {
     paddingHorizontal: 16,

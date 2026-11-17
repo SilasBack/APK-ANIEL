@@ -11,7 +11,7 @@ import {
   setStoredSessions,
 } from './src/services/storage';
 import { LoginScreen } from './src/screens/LoginScreen';
-import { RdoListScreen } from './src/screens/RdoListScreen';
+import { clearRdoListCache, RdoListScreen } from './src/screens/RdoListScreen';
 import { RdoDetailScreen } from './src/screens/RdoDetailScreen';
 import { NativeRdoDetailScreen } from './src/screens/NativeRdoDetailScreen';
 import { CreateRdoScreen } from './src/screens/CreateRdoScreen';
@@ -153,6 +153,7 @@ function AppContent() {
   }
 
   async function handleDisconnectAccount(login: string) {
+    clearRdoListCache();
     const remaining = sessions.filter((s) => s.login.toLowerCase() !== login.toLowerCase());
     setSessions(remaining);
     await setStoredSessions(remaining);
@@ -174,6 +175,7 @@ function AppContent() {
   }
 
   async function handleLogoutAll() {
+    clearRdoListCache();
     await setStoredSessions([]);
     setSessions([]);
     setSelectedRdo(null);
@@ -277,7 +279,10 @@ function AppContent() {
             session={createDefaultSession}
             sessions={sessions}
             onBack={() => setCurrentScreen('rdoList')}
-            onCreated={() => setCurrentScreen('rdoList')}
+            onCreated={() => {
+              clearRdoListCache();
+              setCurrentScreen('rdoList');
+            }}
           />
         )}
 
@@ -286,7 +291,10 @@ function AppContent() {
             session={selectedRdoSession}
             rdo={selectedRdo}
             onBack={() => setCurrentScreen('rdoDetail')}
-            onSuccess={() => setCurrentScreen('rdoList')}
+            onSuccess={() => {
+              clearRdoListCache();
+              setCurrentScreen('rdoList');
+            }}
           />
         )}
 
