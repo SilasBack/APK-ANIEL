@@ -147,7 +147,7 @@ export function RdoDetailScreen({
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* App Bar */}
       <View style={styles.appBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
@@ -155,8 +155,8 @@ export function RdoDetailScreen({
         </TouchableOpacity>
         <View style={styles.appBarTitleBox}>
           <Text style={styles.appBarTitle}>RDO #{rdo.number}</Text>
-          <Text style={styles.appBarSubtitle}>
-            Contrato {rdo.contract} · Projeto {rdo.project}
+          <Text style={styles.appBarSubtitle} numberOfLines={1}>
+            Conta {session.login} · Contrato {rdo.contract} · Projeto {rdo.project}
           </Text>
         </View>
         <View style={styles.statusBadge}>

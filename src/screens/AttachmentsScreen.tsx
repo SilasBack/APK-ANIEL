@@ -212,7 +212,7 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.appBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={24} color={colors.icon} />

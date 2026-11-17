@@ -24,6 +24,9 @@ export interface RdoSummary {
   date: string; // dtInicial
   address: string;
   raw: any;
+  accountLogin?: string; // conta que consultou este RDO (vínculo multi-conexão)
+  accountName?: string;
+  accountTeam?: string;
 }
 
 export interface Encerramento {

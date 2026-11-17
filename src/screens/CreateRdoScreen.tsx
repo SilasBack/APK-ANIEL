@@ -15,7 +15,7 @@ import {
   Platform,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LoginSession } from '../types';
 import {
@@ -29,6 +29,7 @@ import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
   session: LoginSession;
+  sessions?: LoginSession[];
   onBack: () => void;
   onCreated: () => void;
 }
@@ -62,12 +63,19 @@ function serviceLabel(item: any): string {
   return String(item?.descricao || item?.nome || item?.tipoServico || item?.id || '').trim();
 }
 
-export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
+export function CreateRdoScreen({ session: initialSession, sessions, onBack, onCreated }: Props) {
   const { colors } = useTheme();
   const styles = useThemedStyles(baseStyles);
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const isCompact = width < 360;
   const horizontalPad = isCompact ? 12 : 16;
+
+  const availableSessions = sessions && sessions.length > 0 ? sessions : [initialSession];
+  const [selectedLogin, setSelectedLogin] = useState(initialSession.login);
+  const session =
+    availableSessions.find((s) => s.login.toLowerCase() === selectedLogin.toLowerCase()) ||
+    initialSession;
 
   // Server catalogs
   const [contracts, setContracts] = useState<any[]>([]);
@@ -496,7 +504,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* App Bar */}
       <View style={styles.appBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn} disabled={submitting}>
@@ -507,7 +515,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
             Criar Novo RDO
           </Text>
           <Text style={styles.appBarSubtitle} numberOfLines={1}>
-            Equipe {session.team || session.login}
+            Conta {session.login} · Equipe {session.team || session.login}
           </Text>
         </View>
         <TouchableOpacity
@@ -542,6 +550,57 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
               <View style={styles.errorBanner}>
                 <MaterialIcons name="error-outline" size={18} color="#C53030" />
                 <Text style={styles.errorBannerText}>{catalogError}</Text>
+              </View>
+            )}
+
+            {availableSessions.length > 1 && (
+              <View style={[styles.card, isCompact && styles.cardCompact]}>
+                <Text style={styles.cardHeader}>Conta que vai criar o RDO</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 8 }}
+                >
+                  {availableSessions.map((acc) => {
+                    const active = acc.login.toLowerCase() === session.login.toLowerCase();
+                    return (
+                      <TouchableOpacity
+                        key={acc.login}
+                        style={[styles.accountPill, active && styles.accountPillActive]}
+                        onPress={() => {
+                          if (!active) {
+                            setSelectedLogin(acc.login);
+                            setContract('');
+                            setProject('');
+                            setEvento('');
+                            setServiceId('');
+                            setServiceName('');
+                            setSubtypeId('');
+                            setSubtypeName('');
+                            setServices([]);
+                            setSubtypes([]);
+                          }
+                        }}
+                        disabled={submitting}
+                      >
+                        <MaterialIcons
+                          name="person"
+                          size={15}
+                          color={active ? '#FFF' : colors.textSecondary}
+                        />
+                        <Text
+                          style={[
+                            styles.accountPillText,
+                            active && styles.accountPillTextActive,
+                          ]}
+                        >
+                          {acc.login}
+                          {acc.team ? ` · ${acc.team}` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
               </View>
             )}
 
@@ -860,8 +919,16 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
           </View>
         </ScrollView>
 
-        {/* Pinned Bottom Action Bar */}
-        <View style={[styles.footerBar, { paddingHorizontal: horizontalPad }]}>
+        {/* Pinned Bottom Action Bar — always safely above Android nav bar */}
+        <View
+          style={[
+            styles.footerBar,
+            {
+              paddingHorizontal: horizontalPad,
+              paddingBottom: Math.max(insets.bottom, 14) + 10,
+            },
+          ]}
+        >
           <View style={styles.formInner}>
             <TouchableOpacity
               style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
@@ -889,7 +956,15 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
         onRequestClose={() => setPicker(null)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalSheet, { maxHeight: Math.round(height * 0.78) }]}>
+          <View
+            style={[
+              styles.modalSheet,
+              {
+                maxHeight: Math.round(height * 0.78),
+                paddingBottom: Math.max(insets.bottom, 16) + 12,
+              },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{picker?.title}</Text>
               <TouchableOpacity onPress={() => setPicker(null)} style={styles.modalCloseBtn}>
@@ -999,6 +1074,26 @@ const baseStyles = StyleSheet.create({
     width: '100%',
     maxWidth: 640,
     alignSelf: 'center',
+  },
+  accountPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#EDF2F7',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  accountPillActive: {
+    backgroundColor: '#08776F',
+  },
+  accountPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2D3748',
+  },
+  accountPillTextActive: {
+    color: '#FFF',
   },
   errorBanner: {
     flexDirection: 'row',

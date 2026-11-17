@@ -140,6 +140,20 @@ async function run(){
  assert.equal(cleanRes.remaining.totalBytes, 0);
  assert.ok(memory.has('@aniel_active_session')); // Login/session preserved!
 
- console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais, edição de campos únicos, URLs/remoção de vídeo, status de atendimento e auto-limpeza 1GB. Nenhuma conexão real.');
+ // Multi-account storage checks (passwords strictly in SecureStore, never AsyncStorage)
+ const actor2 = { login: 'test-user-2', employee: 'test-user-2', password: 'second-secret-password', team: 'team-2', name: 'Test 2', usesRouting: false };
+ await storage.setStoredSessions([actor, actor2]);
+ assert.ok(!memory.get('@aniel_active_sessions').includes('test-password'));
+ assert.ok(!memory.get('@aniel_active_sessions').includes('second-secret-password'));
+ const restoredMulti = await storage.getStoredSessions();
+ assert.equal(restoredMulti.length, 2);
+ assert.equal(restoredMulti[0].password, 'test-password');
+ assert.equal(restoredMulti[1].password, 'second-secret-password');
+ await storage.setStoredSessions([actor2]);
+ const remainingMulti = await storage.getStoredSessions();
+ assert.equal(remainingMulti.length, 1);
+ assert.equal(remainingMulti[0].login, 'test-user-2');
+
+ console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais, edição de campos únicos, URLs/remoção de vídeo, status de atendimento, auto-limpeza 1GB e multi-contas. Nenhuma conexão real.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});

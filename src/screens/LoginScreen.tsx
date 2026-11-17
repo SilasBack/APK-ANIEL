@@ -14,16 +14,24 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { CONFIG } from '../constants/config';
 import { loginAsync } from '../services/apiClient';
-import { getClientDevice, getSavedLogins, saveLogin, removeSavedLogin, setStoredSession } from '../services/storage';
+import { getClientDevice, getSavedLogins, saveLogin, removeSavedLogin } from '../services/storage';
 import { LoginSession, SavedLogin } from '../types';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Props {
   onLoginSuccess: (session: LoginSession) => void;
+  isAddingAccount?: boolean;
+  connectedLogins?: string[];
+  onCancel?: () => void;
 }
 
-export function LoginScreen({ onLoginSuccess }: Props) {
+export function LoginScreen({
+  onLoginSuccess,
+  isAddingAccount = false,
+  connectedLogins = [],
+  onCancel,
+}: Props) {
   const { isDark, colors, toggleTheme } = useTheme();
   const styles = useThemedStyles(baseStyles);
   const [username, setUsername] = useState('');
@@ -31,6 +39,8 @@ export function LoginScreen({ onLoginSuccess }: Props) {
   const [loading, setLoading] = useState(false);
   const [savedLogins, setSavedLogins] = useState<SavedLogin[]>([]);
   const [showPassword, setShowPassword] = useState(false);
+
+  const connectedSet = new Set(connectedLogins.map((l) => l.toLowerCase()));
 
   useEffect(() => {
     loadSavedLogins();
@@ -41,8 +51,13 @@ export function LoginScreen({ onLoginSuccess }: Props) {
     try { list = await getSavedLogins(); } catch { Alert.alert('Acessos salvos', 'Não foi possível abrir os acessos protegidos. Digite seu login.'); return; }
     setSavedLogins(list);
     if (list.length > 0 && !username) {
-      setUsername(list[0].login);
-      if (list[0].password) setPassword(list[0].password);
+      const candidate = isAddingAccount
+        ? list.find((item) => !connectedSet.has(item.login.toLowerCase()))
+        : list[0];
+      if (candidate) {
+        setUsername(candidate.login);
+        if (candidate.password) setPassword(candidate.password);
+      }
     }
   }
 
@@ -57,7 +72,6 @@ export function LoginScreen({ onLoginSuccess }: Props) {
       const device = await getClientDevice();
       const session = await loginAsync(username, password, device);
       await saveLogin(username.trim(), password, session.name);
-      await setStoredSession(session);
       onLoginSuccess(session);
     } catch (err: any) {
       Alert.alert('Erro ao entrar', err?.message || 'Falha na autenticação.');
@@ -86,8 +100,16 @@ export function LoginScreen({ onLoginSuccess }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.themeBar}>
+        {isAddingAccount && onCancel ? (
+          <TouchableOpacity style={styles.backPillBtn} onPress={onCancel} disabled={loading}>
+            <MaterialIcons name="arrow-back" size={18} color={colors.icon} />
+            <Text style={styles.backPillText}>Voltar</Text>
+          </TouchableOpacity>
+        ) : (
+          <View />
+        )}
         <TouchableOpacity style={styles.themeToggleBtn} onPress={toggleTheme}>
           <MaterialIcons
             name={isDark ? 'light-mode' : 'dark-mode'}
@@ -98,17 +120,27 @@ export function LoginScreen({ onLoginSuccess }: Props) {
         </TouchableOpacity>
       </View>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.iconCircle}>
-              <MaterialIcons name="engineering" size={40} color={colors.primarySoftText} />
+              <MaterialIcons
+                name={isAddingAccount ? 'person-add' : 'engineering'}
+                size={40}
+                color={colors.primarySoftText}
+              />
             </View>
-            <Text style={styles.title}>Aniel Next</Text>
-            <Text style={styles.subtitle}>Gestão de Obras & RDO</Text>
+            <Text style={styles.title}>
+              {isAddingAccount ? 'Conectar outra conta' : 'Aniel Next'}
+            </Text>
+            <Text style={styles.subtitle}>
+              {isAddingAccount
+                ? 'Mantenha várias contas conectadas ao mesmo tempo'
+                : 'Gestão de Obras & RDO'}
+            </Text>
 
             <View style={styles.companyBadge}>
               <MaterialIcons name="business" size={16} color={colors.primarySoftText} />
@@ -146,6 +178,7 @@ export function LoginScreen({ onLoginSuccess }: Props) {
                       ]}
                     >
                       {item.login}
+                      {connectedSet.has(item.login.toLowerCase()) ? ' ✓' : ''}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -213,7 +246,9 @@ export function LoginScreen({ onLoginSuccess }: Props) {
             {loading ? (
               <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.buttonText}>Entrar no Aniel</Text>
+              <Text style={styles.buttonText}>
+                {isAddingAccount ? 'Conectar conta' : 'Entrar no Aniel'}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
@@ -235,9 +270,24 @@ const baseStyles = StyleSheet.create({
   },
   themeBar: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 8,
+  },
+  backPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EDF2F7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  backPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1A202C',
   },
   themeToggleBtn: {
     flexDirection: 'row',

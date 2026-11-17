@@ -9,8 +9,9 @@ import {
   TextInput,
   RefreshControl,
   Alert,
+  ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getOpenRdosAsync, getClosedRdosAsync } from '../services/apiClient';
 import { LoginSession, RdoSummary } from '../types';
@@ -25,18 +26,34 @@ import {
 } from '../services/storageCleanup';
 
 interface Props {
-  session: LoginSession;
+  sessions: LoginSession[];
+  selectedAccount: string; // 'ALL' or login
+  onSelectAccount: (login: string) => void;
+  onAddAccount: () => void;
+  onDisconnectAccount: (login: string) => void;
   onSelectRdo: (rdo: RdoSummary) => void;
   onCreateRdo: () => void;
-  onLogout: () => void;
+  onLogoutAll: () => void;
 }
 
-export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: Props) {
+export function RdoListScreen({
+  sessions,
+  selectedAccount,
+  onSelectAccount,
+  onAddAccount,
+  onDisconnectAccount,
+  onSelectRdo,
+  onCreateRdo,
+  onLogoutAll,
+}: Props) {
   const { isDark, colors, toggleTheme } = useTheme();
   const styles = useThemedStyles(baseStyles);
+  const insets = useSafeAreaInsets();
+
   const [activeTab, setActiveTab] = useState<'abertos' | 'fechados'>('abertos');
   const [loading, setLoading] = useState(false);
   const [rdos, setRdos] = useState<RdoSummary[]>([]);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [cleanupVisible, setCleanupVisible] = useState(false);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
@@ -82,21 +99,65 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
     };
   }, []);
 
-  const requestRef=useRef(0);
-  const fetchRdos=useCallback(async () => {
-    const id=++requestRef.current;
+  const requestRef = useRef(0);
+  const fetchRdos = useCallback(async () => {
+    const id = ++requestRef.current;
     setLoading(true);
+    setLoadErrors([]);
     try {
-      const now=new Date();
-      const list=activeTab==='abertos'
-        ? await getOpenRdosAsync(session)
-        : await getClosedRdosAsync(session,new Date(now.getFullYear(),now.getMonth(),1).toLocaleDateString('pt-BR'),now.toLocaleDateString('pt-BR'));
-      if (id===requestRef.current) setRdos(list);
-    } catch(err: any) {
-      if (id===requestRef.current) Alert.alert('Erro ao carregar RDOs',err?.message || 'Falha na comunicação com o servidor.');
-    } finally { if (id===requestRef.current) setLoading(false); }
-  },[activeTab,session]);
-  useEffect(() => { void fetchRdos(); return () => { requestRef.current++; }; },[fetchRdos]);
+      const now = new Date();
+      const startStr = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('pt-BR');
+      const endStr = now.toLocaleDateString('pt-BR');
+      const targets =
+        selectedAccount === 'ALL'
+          ? sessions
+          : sessions.filter((s) => s.login.toLowerCase() === selectedAccount.toLowerCase());
+
+      const results = await Promise.allSettled(
+        targets.map(async (acc) => {
+          const list =
+            activeTab === 'abertos'
+              ? await getOpenRdosAsync(acc)
+              : await getClosedRdosAsync(acc, startStr, endStr);
+          return list.map((item) => ({
+            ...item,
+            accountLogin: acc.login,
+            accountName: acc.name,
+            accountTeam: acc.team,
+          }));
+        })
+      );
+
+      if (id !== requestRef.current) return;
+      const combined: RdoSummary[] = [];
+      const errors: string[] = [];
+      results.forEach((res, idx) => {
+        const acc = targets[idx];
+        if (res.status === 'fulfilled') {
+          combined.push(...res.value);
+        } else {
+          errors.push(
+            `Conta ${acc.login}: ${res.reason?.message || 'Falha na comunicação com o servidor.'}`
+          );
+        }
+      });
+
+      setRdos(combined);
+      setLoadErrors(errors);
+      if (errors.length > 0 && combined.length === 0 && targets.length === 1) {
+        Alert.alert('Erro ao carregar RDOs', errors[0]);
+      }
+    } finally {
+      if (id === requestRef.current) setLoading(false);
+    }
+  }, [activeTab, sessions, selectedAccount]);
+
+  useEffect(() => {
+    void fetchRdos();
+    return () => {
+      requestRef.current++;
+    };
+  }, [fetchRdos]);
 
   const filteredRdos = rdos.filter((r) => {
     if (!search.trim()) return true;
@@ -106,7 +167,9 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
       r.project.toLowerCase().includes(q) ||
       r.contract.toLowerCase().includes(q) ||
       r.address.toLowerCase().includes(q) ||
-      r.service.toLowerCase().includes(q)
+      r.service.toLowerCase().includes(q) ||
+      (r.accountLogin || '').toLowerCase().includes(q) ||
+      (r.accountTeam || '').toLowerCase().includes(q)
     );
   });
 
@@ -124,17 +187,59 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
     }
   }
 
+  function confirmDisconnect(acc: LoginSession) {
+    Alert.alert(
+      'Desconectar conta',
+      `Deseja desconectar a conta ${acc.login} (${acc.name || acc.team})?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Desconectar',
+          style: 'destructive',
+          onPress: () => onDisconnectAccount(acc.login),
+        },
+      ]
+    );
+  }
+
+  function handleLogoutPress() {
+    if (sessions.length <= 1) {
+      onLogoutAll();
+      return;
+    }
+    Alert.alert(
+      'Encerrar sessões',
+      `Você tem ${sessions.length} contas conectadas. Deseja sair de todas as contas?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Sair de todas', style: 'destructive', onPress: onLogoutAll },
+      ]
+    );
+  }
+
+  const singleSession = sessions.length === 1 ? sessions[0] : null;
+  const fabBottom = Math.max(insets.bottom, 16) + 20;
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* App Bar */}
       <View style={styles.appBar}>
         <View style={{ flex: 1, marginRight: 8 }}>
           <Text style={styles.appBarTitle}>Obras & RDO</Text>
           <Text style={styles.appBarSubtitle} numberOfLines={1}>
-            {session.name} • Equipe {session.team}
+            {singleSession
+              ? `${singleSession.name} • Equipe ${singleSession.team}`
+              : `${sessions.length} contas conectadas`}
           </Text>
         </View>
         <View style={styles.appBarActions}>
+          <TouchableOpacity
+            style={styles.themeBtn}
+            onPress={onAddAccount}
+            accessibilityLabel="Conectar outra conta"
+          >
+            <MaterialIcons name="person-add" size={21} color={colors.primarySoftText} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.themeBtn,
@@ -157,14 +262,100 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
           >
             <MaterialIcons
               name={isDark ? 'light-mode' : 'dark-mode'}
-              size={22}
+              size={21}
               color={colors.primarySoftText}
             />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
-            <MaterialIcons name="logout" size={22} color={colors.danger} />
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogoutPress}>
+            <MaterialIcons name="logout" size={21} color={colors.danger} />
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Multi-Account Switcher Bar */}
+      <View style={styles.accountsBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.accountsScrollContent}
+        >
+          {sessions.length > 1 && (
+            <TouchableOpacity
+              style={[
+                styles.accountChip,
+                selectedAccount === 'ALL' && styles.accountChipActive,
+              ]}
+              onPress={() => onSelectAccount('ALL')}
+            >
+              <MaterialIcons
+                name="groups"
+                size={15}
+                color={selectedAccount === 'ALL' ? '#FFF' : colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.accountChipText,
+                  selectedAccount === 'ALL' && styles.accountChipTextActive,
+                ]}
+              >
+                Todas ({sessions.length})
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {sessions.map((acc) => {
+            const isSelected =
+              sessions.length === 1 ||
+              selectedAccount.toLowerCase() === acc.login.toLowerCase();
+            return (
+              <View
+                key={acc.login}
+                style={[
+                  styles.accountChipWrap,
+                  isSelected && styles.accountChipActive,
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.accountChipMain}
+                  onPress={() => onSelectAccount(acc.login)}
+                >
+                  <MaterialIcons
+                    name="person"
+                    size={15}
+                    color={isSelected ? '#FFF' : colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.accountChipText,
+                      isSelected && styles.accountChipTextActive,
+                    ]}
+                  >
+                    {acc.login}
+                    {acc.team ? ` · ${acc.team}` : ''}
+                  </Text>
+                </TouchableOpacity>
+                {sessions.length > 1 && (
+                  <TouchableOpacity
+                    style={styles.accountChipClose}
+                    onPress={() => confirmDisconnect(acc)}
+                    accessibilityLabel={`Desconectar ${acc.login}`}
+                  >
+                    <MaterialIcons
+                      name="close"
+                      size={14}
+                      color={isSelected ? '#E6FFFA' : colors.iconMuted}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })}
+
+          <TouchableOpacity style={styles.addAccountChip} onPress={onAddAccount}>
+            <MaterialIcons name="add" size={16} color={colors.primarySoftText} />
+            <Text style={styles.addAccountChipText}>Conta</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
       {/* Tabs */}
@@ -187,6 +378,14 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
         </TouchableOpacity>
       </View>
 
+      {/* Partial Account Load Error Banner */}
+      {loadErrors.length > 0 && (
+        <View style={styles.storageBanner}>
+          <MaterialIcons name="error-outline" size={18} color={colors.danger} />
+          <Text style={styles.storageBannerText}>{loadErrors.join('\n')}</Text>
+        </View>
+      )}
+
       {/* 1 GB Storage Warning Banner */}
       {storageStats?.exceedsLimit && (
         <View style={styles.storageBanner}>
@@ -208,7 +407,7 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
         <MaterialIcons name="search" size={20} color={colors.iconMuted} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Buscar por obra, INEP, contrato ou endereço..."
+          placeholder="Buscar por obra, INEP, contrato, conta ou endereço..."
           placeholderTextColor={colors.placeholder}
           value={search}
           onChangeText={setSearch}
@@ -220,9 +419,10 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
         )}
       </View>
 
-      <Text style={{ paddingHorizontal: 20, marginBottom: 4, color: colors.textSecondary }}>
+      <Text style={{ paddingHorizontal: 20, marginBottom: 4, color: colors.textSecondary, fontSize: 12 }}>
         {filteredRdos.length} encontrado(s) de {rdos.length} RDOs
       </Text>
+
       {/* List */}
       {loading && rdos.length === 0 ? (
         <View style={styles.centerBox}>
@@ -232,8 +432,13 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
       ) : (
         <FlatList
           data={filteredRdos}
-          keyExtractor={(item, idx) => `${item.number}-${idx}`}
-          contentContainerStyle={styles.listContent}
+          keyExtractor={(item, idx) =>
+            `${item.accountLogin || 'acc'}-${item.contract}-${item.project}-${item.number}-${idx}`
+          }
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: fabBottom + 76 },
+          ]}
           refreshControl={
             <RefreshControl
               refreshing={loading}
@@ -267,6 +472,16 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
                   </View>
                 </View>
 
+                {sessions.length > 1 && item.accountLogin ? (
+                  <View style={styles.accountOwnerPill}>
+                    <MaterialIcons name="badge" size={13} color={colors.info} />
+                    <Text style={styles.accountOwnerText}>
+                      Conta {item.accountLogin}
+                      {item.accountTeam ? ` · Equipe ${item.accountTeam}` : ''}
+                    </Text>
+                  </View>
+                ) : null}
+
                 <Text style={styles.projectText}>
                   Projeto / INEP: <Text style={styles.projectVal}>{item.project}</Text>
                 </Text>
@@ -291,8 +506,8 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
         />
       )}
 
-      {/* Floating Action Button (New RDO) */}
-      <TouchableOpacity style={styles.fab} onPress={onCreateRdo}>
+      {/* Floating Action Button (New RDO) — positioned safely above Android nav bar */}
+      <TouchableOpacity style={[styles.fab, { bottom: fabBottom }]} onPress={onCreateRdo}>
         <MaterialIcons name="add" size={26} color="#FFF" />
         <Text style={styles.fabText}>Novo RDO</Text>
       </TouchableOpacity>
@@ -310,7 +525,7 @@ const baseStyles = StyleSheet.create({
   appBarActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   themeBtn: {
     padding: 8,
@@ -331,6 +546,88 @@ const baseStyles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#E53E3E',
+  },
+  accountsBar: {
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF2F7',
+    paddingVertical: 8,
+  },
+  accountsScrollContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+    alignItems: 'center',
+  },
+  accountChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#EDF2F7',
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  accountChipWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EDF2F7',
+    borderRadius: 16,
+  },
+  accountChipMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingLeft: 11,
+    paddingRight: 9,
+    paddingVertical: 6,
+  },
+  accountChipClose: {
+    paddingRight: 8,
+    paddingLeft: 2,
+    paddingVertical: 6,
+  },
+  accountChipActive: {
+    backgroundColor: '#08776F',
+  },
+  accountChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2D3748',
+  },
+  accountChipTextActive: {
+    color: '#FFF',
+  },
+  addAccountChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#E6F4F1',
+    borderWidth: 1,
+    borderColor: '#B2DFDB',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+  },
+  addAccountChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#08776F',
+  },
+  accountOwnerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: '#EBF8FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  accountOwnerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2B6CB0',
   },
   storageBanner: {
     flexDirection: 'row',
@@ -370,20 +667,20 @@ const baseStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
     backgroundColor: '#FFF',
     borderBottomWidth: 1,
     borderBottomColor: '#EDF2F7',
   },
   appBarTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: 'bold',
     color: '#1A202C',
   },
   appBarSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#718096',
     marginTop: 2,
   },
@@ -401,7 +698,7 @@ const baseStyles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 11,
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
@@ -423,7 +720,7 @@ const baseStyles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#EDF2F7',
     marginHorizontal: 16,
-    marginVertical: 12,
+    marginVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
     height: 44,
@@ -438,7 +735,6 @@ const baseStyles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingBottom: 90,
   },
   card: {
     backgroundColor: '#FFF',
@@ -539,23 +835,22 @@ const baseStyles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    bottom: 24,
     right: 20,
     backgroundColor: '#08776F',
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 30,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 5,
+    paddingHorizontal: 18,
+    borderRadius: 28,
+    shadowColor: '#08776F',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
   fabText: {
     color: '#FFF',
-    fontSize: 15,
     fontWeight: 'bold',
+    fontSize: 15,
     marginLeft: 6,
   },
 });

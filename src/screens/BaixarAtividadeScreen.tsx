@@ -136,7 +136,7 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* App Bar */}
       <View style={styles.appBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn} disabled={submitting}>

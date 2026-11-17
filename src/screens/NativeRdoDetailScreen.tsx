@@ -11,6 +11,7 @@ import {
   Image,
   Modal,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -88,6 +89,9 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
   const [editingQuizId, setEditingQuizId] = useState<string | null>(null);
   const [viewServerWhileEditing, setViewServerWhileEditing] = useState(false);
   const [confirmSendNewModal, setConfirmSendNewModal] = useState(false);
+  const [newListTemplate, setNewListTemplate] = useState<any>(null);
+  const [newListName, setNewListName] = useState('');
+  const creatingListRef = useRef(false);
 
   // Barcode Scanner Modal state
   const [scannerModal, setScannerModal] = useState<{
@@ -218,6 +222,18 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
     initializeScreen();
   }, [storageDraftKey]);
 
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (editingQuizId) {
+        setEditingQuizId(null);
+        setViewServerWhileEditing(false);
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [editingQuizId]);
+
   async function handleRefreshFromServer() {
     if (busy || refreshing) return;
     setRefreshing(true);
@@ -239,16 +255,6 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
 
   const templates = getArray(detailData, 'questionarios');
   const doneList = getArray(detailData, 'questionariosFeitos');
-  const pendingTemplates = templates.filter((quiz) => {
-    const qId = getText(quiz, 'id');
-    const qTitle = getText(quiz, 'titulo').trim().toUpperCase();
-    return !doneList.some((a) => {
-      const aQuizId = getText(a, 'idQuiz');
-      if (qId && aQuizId) return aQuizId === qId;
-      const aTitle = getText(a, 'titulo').trim().toUpperCase();
-      return qTitle.length > 0 && aTitle === qTitle;
-    });
-  });
   const activeDraft = editingQuizId ? draftsByQuizId[editingQuizId] || null : null;
 
   // Helpers for Saved Photos Continuous Numbering (Foto X de Y across all questions in a questionnaire)
@@ -329,17 +335,26 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
   }
 
   // Open questionnaire for filling
-  async function handleOpenTemplate(quiz: any) {
+  async function handleOpenTemplate(quiz: any, listName?: string) {
     const quizId = getText(quiz, 'id') || 'default';
     setViewServerWhileEditing(false);
     setError('');
     setMessage('');
 
     if (!draftsRef.current[quizId]) {
+      if (!listName?.trim()) {
+        setNewListName('');
+        setNewListTemplate(quiz);
+        return;
+      }
       const rawQuestions =
         getArray(quiz, 'questoesDisponiveis').length > 0
           ? getArray(quiz, 'questoesDisponiveis')
           : getArray(quiz, 'questoes');
+      if (rawQuestions.length === 0) {
+        setError('Este modelo veio sem perguntas. Atualize os dados do servidor.');
+        return;
+      }
       const questions = [...rawQuestions]
         .sort(
           (a, b) =>
@@ -354,15 +369,16 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
         }));
       const newDraft: DetailDraft = {
         template: quiz,
-        protocol: getText(quiz, 'titulo') || `Detalhamento-${rdo.number}`,
+        protocol: listName.trim(),
         questions,
         state: 'pending',
         savedAt: new Date().toLocaleTimeString('pt-BR'),
       };
       const next = { ...draftsRef.current, [quizId]: newDraft };
+      if (!await persistLocalState(next)) return;
       setDraftsByQuizId(next);
-      await persistLocalState(next);
     }
+    setNewListTemplate(null);
     setEditingQuizId(quizId);
   }
 
@@ -634,7 +650,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* App Bar */}
       <View style={styles.appBar}>
         <TouchableOpacity
@@ -1013,11 +1029,11 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
               );
             })}
 
-            {/* Templates Section: only show questionnaires not yet answered on the server */}
-            {!activeDraft && pendingTemplates.length > 0 && (
+            {/* Available templates remain visible even when a previous list is saved. */}
+            {!activeDraft && !closed && templates.length > 0 && (
               <>
-                <Text style={styles.sectionHeading}>Questionários pendentes</Text>
-                {pendingTemplates.map((quiz, tIdx) => {
+                <Text style={styles.sectionHeading}>Adicionar questionário</Text>
+                {templates.map((quiz, tIdx) => {
                   const quizId = getText(quiz, 'id') || String(tIdx);
                   const hasLocalDraft = Boolean(draftsByQuizId[quizId]);
 
@@ -1037,7 +1053,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                           <Text style={styles.primaryBtnText}>
                             {hasLocalDraft
                               ? 'Continuar preenchimento'
-                              : 'Preencher questionário'}
+                              : 'Adicionar lista'}
                           </Text>
                         </TouchableOpacity>
                       )}
@@ -1053,6 +1069,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
             <Text style={styles.editorQuizTitle}>
               {getText(activeDraft.template, 'titulo')}
             </Text>
+            <Text style={styles.templateDesc}>Lista: {activeDraft.protocol} · Rascunho neste aparelho</Text>
 
             {activeDraft.questions.map((item, qIdx) => {
               const q = item.question;
@@ -1401,6 +1418,33 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
               disabled={busy}
             >
               <Text style={styles.secondaryBtnLargeText}>Continuar preenchendo</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={Boolean(newListTemplate)} transparent animationType="slide"
+        onRequestClose={() => { if (!creatingListRef.current) setNewListTemplate(null); }}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalPanel}>
+            <Text style={styles.modalTitle}>{getText(newListTemplate, 'titulo')}</Text>
+            <Text style={styles.questionTitle}>Nome do questionário</Text>
+            <TextInput value={newListName} onChangeText={setNewListName}
+              placeholder="Digite o nome da lista" placeholderTextColor={colors.textSecondary}
+              style={{ color: colors.text, borderWidth: 1, borderColor: colors.textSecondary, borderRadius: 8, padding: 12 }} />
+            <Text style={styles.templateDesc}>Responder abre o formulário e salva o rascunho neste aparelho. Após preencher, envie ao servidor.</Text>
+            <TouchableOpacity style={styles.primaryBtn} disabled={busy || !newListName.trim()}
+              onPress={async () => {
+                if (creatingListRef.current || !newListTemplate || !newListName.trim()) return;
+                creatingListRef.current = true;
+                setBusy(true);
+                try { await handleOpenTemplate(newListTemplate, newListName); }
+                finally { creatingListRef.current = false; setBusy(false); }
+              }}>
+              <Text style={styles.primaryBtnText}>{busy ? 'Salvando…' : 'Responder'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryBtnLarge} disabled={busy} onPress={() => setNewListTemplate(null)}>
+              <Text style={styles.secondaryBtnLargeText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </View>

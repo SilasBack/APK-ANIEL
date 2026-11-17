@@ -7,6 +7,7 @@ import { ClientDevice, LoginSession, SavedLogin } from '../types';
 const DEVICE_ID_KEY='@aniel_device_id';
 const SAVED_LOGINS_KEY='@aniel_saved_logins';
 const ACTIVE_SESSION_KEY='@aniel_active_session';
+const ACTIVE_SESSIONS_KEY='@aniel_active_sessions';
 const secretKey=(login: string) => 'aniel.login.' + Array.from(login.toLowerCase()).map(c => c.charCodeAt(0).toString(16).padStart(4,'0')).join('');
 export async function getOrCreateDeviceId(): Promise<string> {
   let id=await AsyncStorage.getItem(DEVICE_ID_KEY);
@@ -57,6 +58,53 @@ export async function setStoredSession(session: LoginSession|null): Promise<void
   if (!session) { await AsyncStorage.removeItem(ACTIVE_SESSION_KEY); return; }
   await SecureStore.setItemAsync(secretKey(session.login),session.password);
   await AsyncStorage.setItem(ACTIVE_SESSION_KEY,JSON.stringify({login:session.login,employee:session.employee,name:session.name,team:session.team,usesRouting:session.usesRouting}));
+}
+
+export async function getStoredSessions(): Promise<LoginSession[]> {
+  const raw = await AsyncStorage.getItem(ACTIVE_SESSIONS_KEY);
+  if (!raw) {
+    const single = await getStoredSession();
+    return single ? [single] : [];
+  }
+  let list: any;
+  try { list = JSON.parse(raw); } catch { return []; }
+  if (!Array.isArray(list)) return [];
+  const valid = list.filter((d: any) => d && typeof d.login === 'string');
+  const seen = new Set<string>();
+  const deduped: any[] = [];
+  for (const d of valid) {
+    const k = d.login.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    if (d.password) await SecureStore.setItemAsync(secretKey(d.login), d.password);
+    deduped.push({ login: d.login, employee: d.employee, name: d.name, team: d.team, usesRouting: d.usesRouting });
+  }
+  await AsyncStorage.setItem(ACTIVE_SESSIONS_KEY, JSON.stringify(deduped));
+  const restored: LoginSession[] = [];
+  for (const meta of deduped) {
+    const password = await SecureStore.getItemAsync(secretKey(meta.login));
+    if (password) restored.push({ ...meta, password });
+  }
+  return restored;
+}
+
+export async function setStoredSessions(sessions: LoginSession[]): Promise<void> {
+  if (!sessions || sessions.length === 0) {
+    await AsyncStorage.removeItem(ACTIVE_SESSIONS_KEY);
+    await AsyncStorage.removeItem(ACTIVE_SESSION_KEY);
+    return;
+  }
+  const seen = new Set<string>();
+  const metadata: any[] = [];
+  for (const s of sessions) {
+    const k = s.login.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    await SecureStore.setItemAsync(secretKey(s.login), s.password);
+    metadata.push({ login: s.login, employee: s.employee, name: s.name, team: s.team, usesRouting: s.usesRouting });
+  }
+  await AsyncStorage.setItem(ACTIVE_SESSIONS_KEY, JSON.stringify(metadata));
+  await AsyncStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(metadata[0]));
 }
 
 export async function hasPendingDetail(rdo: import('../types').RdoSummary,session: LoginSession): Promise<boolean> {
