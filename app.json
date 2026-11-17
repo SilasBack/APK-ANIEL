@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Aniel Next",
+    "slug": "aniel-next",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.anielnext.touch",
+      "adaptiveIcon": {
+        "backgroundColor": "#08776F",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "O Aniel Next precisa da sua localização para registrar a baixa da atividade na obra."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Aniel Next precisa de acesso às suas fotos para anexar evidências à obra.",
+          "cameraPermission": "O Aniel Next precisa da câmera para tirar fotos de antes e depois da obra."
+        }
+      ]
+    ]
+  }
+}

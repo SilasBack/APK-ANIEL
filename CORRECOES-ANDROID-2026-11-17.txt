@@ -1,0 +1,95 @@
+ANIEL NEXT ANDROID - CORRECOES E PENDENCIAS
+Atualizado em 17/11/2026
+Projeto: C:\Users\silas\Documents\ChatGPT\APK Aniel Touch
+
+ESCOPO
+O APK tem interface e limitacoes proprias. Nao copiar todas as funcionalidades do Windows. Preservar o que ja existe no projeto Android. Nenhuma publicacao foi autorizada nesta revisao. Nao executar operacoes de producao para testar sem alvo e autorizacao especificos.
+
+1. CORRECOES JA APLICADAS NO CODIGO
+
+[FEITO] Criar RDO: buscar os codigos reais de servico e subtipo nos catalogos, em vez de enviar os nomes visiveis como identificadores.
+[FEITO] Criar RDO: obter o centro de custo do evento/contrato, sem usar o nome do evento como centro de custo.
+[FEITO] Criar RDO: validar se o INEP pertence ao contrato e se o evento existe; conferir as regras obrigatorias do modelo.
+[FEITO] Criar RDO: manter numeracao sequencial no servidor (obra vazia), sem datas ocultas inventadas.
+[FEITO] Criar RDO: consultar a lista antes/depois quando a confirmacao falhar; nao repetir automaticamente o POST. Copias identicas da mesma RDO nao impedem reconhecer o resultado.
+[FEITO] CEP: impedir que uma resposta antiga substitua o endereco de um CEP digitado depois.
+[FEITO] GPS na criacao: solicitar e enviar a posicao real somente se o contrato exigir. Silas autorizou expressamente essa condicao neste chat. Permissao negada ou posicao invalida bloqueiam o envio. Nao reutilizar coordenadas de capturas.
+
+[FEITO] Cancelar RDO: normalizar o objeto nativo conforme as capturas (datas, status, enums, defaults, omissao de nulls e campos exclusivos do DTO de leitura).
+[FEITO] Cancelar RDO: consultar o alvo atual, remover somente duplicatas identicas e bloquear registros conflitantes antes da mutacao.
+[FEITO] Respostas da API: exigir result=true; HTTP 200 sozinho nao significa sucesso. Mensagens de erro nao devem expor senha/token nem stacktrace.
+[FEITO] Listas: resposta com formato invalido gera erro, em vez de aparentar uma lista vazia normal.
+[FEITO] Listagem: impedir que consultas antigas sobrescrevam a aba mais recente; mostrar contagem filtrada e total.
+
+[FEITO] Senhas de usuario: migrar os acessos antigos do AsyncStorage para o SecureStore. Os metadados comuns nao devem guardar senhas nem o objeto completo da sessao.
+[FEITO] Inicializacao: autenticar novamente a sessao restaurada e tratar falha sem travar a tela inicial.
+[FEITO] Login salvo: selecionar um acesso sem senha nao conserva a senha digitada da outra conta.
+[FEITO] Dispositivo: usar a plataforma/versao real disponivel, sem declarar Android 14 fixo ou um identificador generico comum para todos quando o armazenamento falha.
+
+[FEITO] Questionario: solicitar o nome antes de Responder, mantendo rascunho local nessa etapa.
+[FEITO] Rascunho: preservar os dados restaurados ao atualizar o snapshot do servidor; serializar as gravacoes locais para evitar sobrescritas fora de ordem.
+[FEITO] Rascunho: informar falha de armazenamento, em vez de silenciar a falha.
+[FEITO] Envio do questionario: gravar sending antes da chamada; restaurar sending como unknown ao reabrir; bloquear reenvio automatico quando o resultado e desconhecido.
+[FEITO] Edicao de resposta/foto/assinatura: validar se a pergunta existe no detalhamento antes de montar a alteracao.
+[FEITO] Fotos do detalhamento: preservar extensao e MIME reais (JPEG, PNG ou WebP), sem rotular toda foto como PNG.
+[FEITO] Assinatura: atualizar o comportamento do gesto quando o campo fica desabilitado.
+[FEITO] Visualizador: reiniciar o zoom por foto sem usar um efeito para alterar o estado imediatamente.
+[FEITO] Tela de fotos avulsas: identificar que sao selecoes locais, sem sugerir que ja estao salvas no servidor.
+
+[FEITO] Anexos: conferir o tamanho real do arquivo e rejeitar arquivo de 100 MB ou maior, ou de tamanho desconhecido.
+[FEITO] Anexos: retirar tamanho ficticio de 5 MB, preservar formato real e usar o identificador correto no campo multipart.
+[FEITO] Anexos: conferir result=true antes de mostrar sucesso.
+[FEITO] Baixar atividade: usar a rota GetEncerramentoByContrato e os encerramentos reais do servidor.
+[FEITO] Baixar atividade: consultar novamente a RDO, o video, os encerramentos e o detalhamento antes de enviar.
+[FEITO] Baixar atividade: bloquear com rascunho de detalhamento pendente, video ausente, GPS ainda indisponivel, dados de atendimento incompletos ou resposta ambigua.
+[FEITO] Baixar atividade: preservar os dados do RDO e nao inventar inicio as 08:00 nem limpar o detalhamento serializado.
+
+2. PRIORIDADE ALTA - VALIDAR NO CELULAR ANTES DE PRODUCAO
+
+[PENDENTE] Instalar/abrir uma build Android e testar login, restauração de sessao e migracao dos acessos salvos no aparelho.
+[PENDENTE] Criar uma RDO Android em alvo especificamente autorizado; conferir contrato, INEP, codigo de servico/subtipo, numero retornado e lista atualizada. Os testes desta revisao foram simulados.
+[PENDENTE] Testar permissao de GPS concedida/negada e contrato que exige/nao exige GPS. Os testes simulados ja conferem que o GPS so e solicitado quando exigido.
+[PENDENTE] Capturar o salvamento final de um questionario real no APK original. A captura atual mostrou CriarRDO e Quiz/Quiz com sucesso, mas NAO mostrou Quiz/SetQuiz ao tocar em +, nomear e Responder.
+[PENDENTE] Validar envio completo de respostas, fotos e assinatura no Android e consultar novamente o servidor para comprovar a persistencia.
+[PENDENTE] Testar falta de rede durante o envio, encerramento do aplicativo e recuperacao do rascunho. Nao duplicar o questionario por reenviar um resultado desconhecido.
+[PENDENTE] Definir uma forma clara de reconciliar/desbloquear um rascunho unknown depois de consultar o que realmente foi salvo. Hoje o bloqueio evita reenvio inseguro, mas a resolucao completa ainda precisa ser trabalhada.
+[PENDENTE] Testar videos abaixo/acima do limite e retorno de recusa com HTTP 200; confirmar nome, tamanho e identificador do anexo no servidor.
+[PENDENTE] Validar Baixar Atividade em alvo autorizado. A montagem foi revisada, mas a baixa Android nao foi executada em producao nesta revisao.
+[PENDENTE] Testar toque, desenho, zoom, teclado, rolagem e selecao multipla de fotos num celular real. Bundle gerado nao substitui teste nativo.
+
+3. LIMITACOES E DECISOES QUE NAO DEVEM SER CONFUNDIDAS COM FUNCOES PRONTAS
+
+- A tela de criacao continua focada no contrato 0002 e no fluxo ESCOLA CONECTADA / ACEITACAO FINAL. Outros contratos/modelos exigem adaptacao explicita; nao escolher um ID arbitrario.
+- Regras obrigatorias nao suportadas devem continuar bloqueando a criacao com mensagem clara.
+- O Android mantem uma sessao ativa e varios acessos salvos. Multi-conexao simultanea do Windows nao foi portada.
+- O helper de cancelamento foi corrigido, mas a exposicao do botao/fluxo de cancelamento na interface Android deve ser uma decisao explicita; nao considerar que a existencia da funcao ja entrega a tela.
+- Nao foram portados automaticamente reabertura/qualidade, conta compartilhada privilegiada, atualizador Windows, compressao de videos ou todas as funcoes de producao/material.
+- Fotos avulsas selecionadas na tela local nao equivalem a fotos enviadas no questionario. O envio real acontece pelo fluxo de detalhamento/anexos correspondente.
+- Avaliar copia das imagens escolhidas para armazenamento persistente antes de prometer recuperacao permanente do rascunho: URIs temporarias do seletor podem expirar.
+- A navegacao atual usa controle de telas em App.tsx. O AGENTS.md pede Expo Router; planejar essa migracao separadamente, sem misturar com correcoes do protocolo nem alterar tudo de uma vez.
+- Rever o botao Voltar do Android e navegacao com formulario em andamento durante a futura adequacao ao Expo Router.
+- Permissoes e configuracoes Android legadas de armazenamento devem ser revisadas conforme os recursos efetivamente usados.
+
+4. VALIDACOES EXECUTADAS
+
+- npm run typecheck: passou.
+- npm run test:protocol: passou, com fetch simulado e sem conexoes reais. Cobre codigos de criacao, centro de custo, duplicatas, cancelamento, recusa sem senha no erro, migracao ao cofre, GPS condicional e formato das fotos.
+- npm run lint: sem erros, com 16 avisos de manutencao (principalmente hooks/efeitos).
+- Bundle Android local por expo export: gerado; verificacao final apos o ultimo ajuste em andamento no momento deste registro.
+- Nenhuma nova RDO foi criada, cancelada ou baixada nos testes desta revisao Android.
+- Nenhum APK de producao foi publicado ou instalado por esta revisao.
+
+5. ARQUIVOS DE REFERENCIA
+
+src/services/apiClient.ts
+src/services/rdoProtocol.ts
+src/services/storage.ts
+src/services/detailWorkflow.ts
+src/screens/CreateRdoScreen.tsx
+src/screens/NativeRdoDetailScreen.tsx
+src/screens/AttachmentsScreen.tsx
+src/screens/BaixarAtividadeScreen.tsx
+tests/protocol-checks.cjs
+docs/INTEGRACAO-RDO-CAPTURAS-2026-11-17.md
+
+NAO COLOCAR SENHAS, TOKENS, CHAVES ADB OU CAPTURAS PRIVADAS NESTE ARQUIVO.
