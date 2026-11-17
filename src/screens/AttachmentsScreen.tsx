@@ -12,7 +12,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { LoginSession, RdoSummary, RdoAttachment } from '../types';
-import { getRdoAttachmentsAsync, handleResponse, isVideoAttachment } from '../services/apiClient';
+import {
+  getRdoAttachmentsAsync,
+  handleResponse,
+  isVideoAttachment,
+  removeRdoAttachmentAsync,
+} from '../services/apiClient';
 import { CONFIG } from '../constants/config';
 import { createFormDataFilePart } from '../services/fileUpload';
 import { detailImageSource } from '../services/detailWorkflow';
@@ -35,11 +40,13 @@ function isImageAttachment(file: RdoAttachment): boolean {
 export function AttachmentsScreen({ session, rdo, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<RdoAttachment[]>([]);
   const [activeVideo, setActiveVideo] = useState<{
     url: string;
     title: string;
     subtitle?: string;
+    item: RdoAttachment;
   } | null>(null);
   const [activeImage, setActiveImage] = useState<{
     url: string;
@@ -60,6 +67,40 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleConfirmRemove(item: RdoAttachment) {
+    if (deletingId || uploading) return;
+    if (rdo.status === 'Cancelado') {
+      Alert.alert('Indisponível', 'Não é possível excluir anexos de um RDO cancelado.');
+      return;
+    }
+    const label = isVideoAttachment(item) ? 'vídeo' : 'anexo';
+    Alert.alert(
+      `Remover ${label} do servidor`,
+      `Deseja excluir "${item.nomeDocumento || 'este arquivo'}" do servidor para o RDO #${rdo.number}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            const key = String(item.id ?? item.uuId ?? item.nomeDocumento);
+            setDeletingId(key);
+            try {
+              await removeRdoAttachmentAsync(session, rdo, item);
+              setActiveVideo(null);
+              Alert.alert('Sucesso', 'Arquivo removido do servidor.');
+              await loadAttachments();
+            } catch (err: any) {
+              Alert.alert('Erro ao remover', err?.message || 'Não foi possível excluir o arquivo.');
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ]
+    );
   }
 
   async function handlePickMedia() {
@@ -229,6 +270,7 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
                   url: mediaUrl,
                   title: item.nomeDocumento || 'Vídeo da obra',
                   subtitle: item.tamanho || undefined,
+                  item,
                 });
               } else if (isImage && mediaUrl) {
                 setActiveImage({
@@ -267,16 +309,33 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
                     {item.tamanho || 'Tamanho desconhecido'}
                   </Text>
                 </View>
-                {isVideo ? (
-                  <View style={styles.playBtnPill}>
-                    <MaterialIcons name="play-arrow" size={16} color="#FFF" />
-                    <Text style={styles.playBtnPillText}>Assistir</Text>
-                  </View>
-                ) : isImage && mediaUrl ? (
-                  <View style={styles.viewBtnPill}>
-                    <Text style={styles.viewBtnPillText}>Ver</Text>
-                  </View>
-                ) : null}
+                <View style={styles.itemActionsRow}>
+                  {isVideo ? (
+                    <View style={styles.playBtnPill}>
+                      <MaterialIcons name="play-arrow" size={16} color="#FFF" />
+                      <Text style={styles.playBtnPillText}>Assistir</Text>
+                    </View>
+                  ) : isImage && mediaUrl ? (
+                    <View style={styles.viewBtnPill}>
+                      <Text style={styles.viewBtnPillText}>Ver</Text>
+                    </View>
+                  ) : null}
+
+                  {rdo.status !== 'Cancelado' && Number(item.id) > 0 && (
+                    <TouchableOpacity
+                      style={styles.deleteBtn}
+                      onPress={() => handleConfirmRemove(item)}
+                      disabled={Boolean(deletingId) || uploading}
+                      accessibilityLabel="Remover arquivo do servidor"
+                    >
+                      {deletingId === String(item.id ?? item.uuId ?? item.nomeDocumento) ? (
+                        <ActivityIndicator size="small" color="#C53030" />
+                      ) : (
+                        <MaterialIcons name="delete-outline" size={20} color="#C53030" />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
               </TouchableOpacity>
             );
           }}
@@ -288,6 +347,11 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
         url={activeVideo?.url || null}
         title={activeVideo?.title}
         subtitle={activeVideo?.subtitle}
+        onDelete={
+          activeVideo && rdo.status !== 'Cancelado' && Number(activeVideo.item.id) > 0
+            ? () => handleConfirmRemove(activeVideo.item)
+            : undefined
+        }
         onClose={() => setActiveVideo(null)}
       />
 
@@ -382,6 +446,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#A0AEC0',
     marginTop: 2,
+  },
+  itemActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 8,
+  },
+  deleteBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FED7D7',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   playBtnPill: {
     flexDirection: 'row',

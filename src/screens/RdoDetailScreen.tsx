@@ -1,4 +1,3 @@
-import { nativeDate } from '../services/rdoProtocol';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -13,7 +12,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { LoginSession, RdoSummary, RdoAttachment } from '../types';
-import { getRdoAttachmentsAsync, sendAuthenticatedAsync, isVideoAttachment } from '../services/apiClient';
+import {
+  getRdoAttachmentsAsync,
+  isVideoAttachment,
+  removeRdoAttachmentAsync,
+  setRdoStatusAsync,
+} from '../services/apiClient';
 import { getClientDevice } from '../services/storage';
 import { detailImageSource } from '../services/detailWorkflow';
 import { CONFIG } from '../constants/config';
@@ -100,45 +104,34 @@ export function RdoDetailScreen({
               if (status !== 'granted') {
                 throw new Error('Permissão de localização é necessária para registrar o atendimento.');
               }
-              const loc = await Location.getCurrentPositionAsync({});
+              const loc = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced,
+              });
               const device = await getClientDevice();
-              const wireCode =
-                targetStatus === 'Deslocando'
-                  ? '6'
-                  : targetStatus === 'Atendendo'
-                  ? '3'
-                  : '8';
-              const now = new Date();
-              const doc = {
-                ...rdo.raw,
-                statusExecucao: targetStatus === 'Deslocando' ? rdo.raw.statusExecucao : wireCode,
-                usuario: rdo.raw.usuario || { ...session.data, senha: session.password },
-              };
-              await sendAuthenticatedAsync(
-                'AnielTV.Touch.WebApi/api/AlterarStatusLocalizacaoTecnico/AtualizarStatus',
-                {
-                  documentoProducao: doc,
-                  status: wireCode,
-                  data: nativeDate(now),
-                  hora: now.toLocaleTimeString('en-US'),
-                  imei: device.id,
-                  dispositivo: device.model,
-                  versaoAPP: device.version,
-                  versaoAndroid: device.platform,
-                  logado: 2,
-                  latitude: loc.coords.latitude,
-                  longitude: loc.coords.longitude,
-                  precisao: loc.coords.accuracy,
-                  altitude: loc.coords.altitude,
-                },
-                session
-              );
-              if (targetStatus !== 'Deslocando') {
+              const updated = await setRdoStatusAsync(session, rdo, device, targetStatus, {
+                latitude: loc.coords.latitude,
+                longitude: loc.coords.longitude,
+                accuracy: loc.coords.accuracy,
+                altitude: loc.coords.altitude,
+              });
+              if (updated) {
+                setCurrentStatus(updated.status);
+                rdo.status = updated.status;
+                rdo.raw = updated.raw;
+              } else if (targetStatus !== 'Deslocando') {
                 setCurrentStatus(targetStatus);
                 rdo.status = targetStatus;
-                rdo.raw = { ...doc, statusExecucao:wireCode };
+                rdo.raw = {
+                  ...rdo.raw,
+                  statusExecucao: targetStatus === 'Atendendo' ? '3' : '8',
+                };
               }
-              Alert.alert('Sucesso', 'Status confirmado pelo servidor.');
+              Alert.alert(
+                'Sucesso',
+                updated
+                  ? `Status "${updated.status}" confirmado pelo servidor.`
+                  : 'Status confirmado pelo servidor.'
+              );
             } catch (err: any) {
               Alert.alert('Erro', err?.message || 'Não foi possível atualizar o status.');
             } finally {
@@ -378,6 +371,36 @@ export function RdoDetailScreen({
         url={activeVideo?.url || null}
         title={activeVideo?.title}
         subtitle={activeVideo?.subtitle}
+        onDelete={
+          serverVideo && rdo.status !== 'Cancelado' && Number(serverVideo.id) > 0
+            ? () => {
+                Alert.alert(
+                  'Remover vídeo do servidor',
+                  `Deseja excluir "${serverVideo.nomeDocumento || 'este vídeo'}" do servidor?`,
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Excluir',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await removeRdoAttachmentAsync(session, rdo, serverVideo);
+                          setActiveVideo(null);
+                          Alert.alert('Sucesso', 'Vídeo removido do servidor.');
+                          await checkAttachments();
+                        } catch (err: any) {
+                          Alert.alert(
+                            'Erro ao remover',
+                            err?.message || 'Não foi possível excluir o vídeo.'
+                          );
+                        }
+                      },
+                    },
+                  ]
+                );
+              }
+            : undefined
+        }
         onClose={() => setActiveVideo(null)}
       />
     </SafeAreaView>

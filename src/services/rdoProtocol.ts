@@ -1,4 +1,4 @@
-import type { RdoSummary } from '../types';
+import type { RdoAttachment, RdoSummary } from '../types';
 
 export function stableJson(value: any): string {
   if (Array.isArray(value)) return '[' + value.map(stableJson).join(',') + ']';
@@ -15,6 +15,23 @@ export function nativeDate(value: Date): string {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const pad = (v: number) => String(v).padStart(2, '0');
   return `${months[value.getMonth()]} ${value.getDate()}, ${value.getFullYear()} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
+}
+export function nativeDate12h(value: Date): string {
+  if (!Number.isFinite(value.getTime())) throw new Error('Data inválida.');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const pad = (v: number) => String(v).padStart(2, '0');
+  const rawHour = value.getHours();
+  const ampm = rawHour >= 12 ? 'PM' : 'AM';
+  const hour12 = rawHour % 12 || 12;
+  return `${months[value.getMonth()]} ${value.getDate()}, ${value.getFullYear()} ${hour12}:${pad(value.getMinutes())}:${pad(value.getSeconds())} ${ampm}`;
+}
+export function nativeTime12h(value: Date): string {
+  if (!Number.isFinite(value.getTime())) throw new Error('Data inválida.');
+  const pad = (v: number) => String(v).padStart(2, '0');
+  const rawHour = value.getHours();
+  const ampm = rawHour >= 12 ? 'PM' : 'AM';
+  const hour12 = rawHour % 12 || 12;
+  return `${pad(hour12)}:${pad(value.getMinutes())}:${pad(value.getSeconds())} ${ampm}`;
 }
 const statusCodes: Record<string,string> = { Aberta:'0', FechadaImprodutiva:'1', FechadaProdutiva:'2', Atendendo:'3', Deslocando:'6', Atendido:'8', Cancelado:'9', Pausar:'10', Reiniciar:'11', InterromperDeslocamento:'12' };
 export function statusCode(value: unknown): string {
@@ -67,4 +84,22 @@ export function buildCancelBody(rdo: RdoSummary, reason: string): any {
     return value;
   }
   return { rdo: { ...native(rdo.raw), codCt:rdo.contract, proj:rdo.project, statusExecucao:statusCode(rdo.status) }, observacao:reason };
+}
+
+export function buildRemoveAttachmentBody(selected: RdoAttachment, fresh: RdoAttachment[]): any {
+  const id = Number(selected?.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error('Este arquivo não retornou uma identificação válida para exclusão.');
+  }
+  const matches = fresh.filter((d) => String(d?.id ?? '') === String(selected.id));
+  if (matches.length !== 1) {
+    throw new Error('Este arquivo não está mais na lista deste RDO. Atualize os anexos.');
+  }
+  const current = matches[0];
+  for (const key of ['caminho', 'uuId', 'nomeDocumento', 'extensao'] as const) {
+    if (String(selected[key] ?? '') !== String(current[key] ?? '')) {
+      throw new Error('O anexo mudou no servidor. Atualize a lista antes de excluir.');
+    }
+  }
+  return { ...current, id, isRDO: true };
 }

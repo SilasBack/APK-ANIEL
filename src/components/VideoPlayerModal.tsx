@@ -19,6 +19,7 @@ interface Props {
   url: string | null;
   title?: string;
   subtitle?: string;
+  onDelete?: () => void;
   onClose: () => void;
 }
 
@@ -154,6 +155,7 @@ export function VideoPlayerModal({
   url,
   title = 'Vídeo do servidor',
   subtitle,
+  onDelete,
   onClose,
 }: Props) {
   async function handleOpenExternal() {
@@ -192,6 +194,11 @@ export function VideoPlayerModal({
               </Text>
             ) : null}
           </View>
+          {onDelete ? (
+            <TouchableOpacity onPress={onDelete} style={styles.headerBtn}>
+              <MaterialIcons name="delete-outline" size={22} color="#FC8181" />
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity onPress={handleOpenExternal} style={styles.headerBtn}>
             <MaterialIcons name="open-in-new" size={22} color="#A0AEC0" />
           </TouchableOpacity>

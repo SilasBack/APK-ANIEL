@@ -88,6 +88,36 @@ async function run(){
  assert.equal(detail.detailImageSource('Anexos/v.mp4', 'https://example.invalid/mobile/'), 'https://example.invalid/mobile/Anexos/v.mp4');
  assert.equal(detail.detailImageSource('https://user:pass@example.invalid/v.mp4', 'https://example.invalid/mobile/'), null);
 
- console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais, edição de campos únicos e URLs de vídeo. Nenhuma conexão real.');
+ // 12h ASCII en-US date/time formatters (no narrow no-break space \u202f)
+ const dMorning = new Date(2026, 10, 17, 9, 5, 3);
+ assert.equal(protocol.nativeDate12h(dMorning), 'Nov 17, 2026 9:05:03 AM');
+ assert.equal(protocol.nativeTime12h(dMorning), '09:05:03 AM');
+ const dAfternoon = new Date(2026, 10, 17, 15, 30, 45);
+ assert.equal(protocol.nativeDate12h(dAfternoon), 'Nov 17, 2026 3:30:45 PM');
+ assert.equal(protocol.nativeTime12h(dAfternoon), '03:30:45 PM');
+
+ // Remove attachment protocol
+ const att = { id: 555, nomeDocumento: 'video.mp4', extensao: 'mp4', uuId: 'u-1', caminho: '/files/video.mp4', tamanho: '2 MB', isRDO: true };
+ replies = [ok([att]), { result: true }]; calls = [];
+ await api.removeRdoAttachmentAsync(actor, rdo, att);
+ assert.equal(calls.filter(x => x.url.endsWith('/RemoverArquivo')).length, 1);
+ assert.equal(calls.at(-1).body.objeto.id, 555);
+ assert.equal(calls.at(-1).body.objeto.isRDO, true);
+ await assert.rejects(() => api.removeRdoAttachmentAsync(actor, { ...rdo, status: 'Cancelado' }, att));
+
+ // Iniciar Atendimento (setRdoStatusAsync) protocol + server refresh
+ const attendingRaw = { ...raw, statusExecucao: '3', horaInicio: '10:00:00' };
+ replies = [{ result: true }, ok([attendingRaw])]; calls = [];
+ const updatedRdo = await api.setRdoStatusAsync(actor, rdo, { id: 'dev1', model: 'Phone', version: '1.0', platform: 'Android' }, 'Atendendo', { latitude: -23.5, longitude: -46.6, accuracy: 10, altitude: 700 });
+ const statusCall = calls.find(x => x.url.endsWith('/AtualizarStatus'));
+ assert.ok(statusCall);
+ assert.equal(statusCall.body.objeto.status, '3');
+ assert.equal(statusCall.body.objeto.documentoProducao.statusExecucao, '3');
+ assert.ok(/^(AM|PM)$/.test(statusCall.body.objeto.hora.slice(-2)));
+ assert.ok(!statusCall.body.objeto.hora.includes('\u202f'));
+ assert.equal(updatedRdo.status, 'Atendendo');
+ assert.equal(updatedRdo.raw.horaInicio, '10:00:00');
+
+ console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais, edição de campos únicos, URLs/remoção de vídeo e status de atendimento. Nenhuma conexão real.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
