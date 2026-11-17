@@ -13,18 +13,17 @@
       "package": "com.anielnext.touch",
       "adaptiveIcon": {
         "backgroundColor": "#08776F",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -32,19 +31,48 @@
     "plugins": [
       "expo-secure-store",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "O Aniel Next precisa da câmera para ler códigos de barras/seriais e capturar fotos da obra."
+        }
+      ],
+      [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "O Aniel Next precisa da sua localização para registrar a baixa da atividade na obra."
+          "locationAlwaysAndWhenInUsePermission": "O Aniel Next precisa da sua localização para registrar o atendimento e a baixa da atividade na obra."
         }
       ],
       [
         "expo-image-picker",
         {
           "photosPermission": "O Aniel Next precisa de acesso às suas fotos para anexar evidências à obra.",
-          "cameraPermission": "O Aniel Next precisa da câmera para tirar fotos de antes e depois da obra."
+          "cameraPermission": "O Aniel Next precisa da câmera para registrar fotos da obra."
         }
       ],
-      "expo-video"
-    ]
+      "expo-video",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#08776F",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0B1117"
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "3ffe1392-be89-48a4-9682-cfc11e3cee79"
+      }
+    },
+    "owner": "rinnegan",
+    "updates": {
+      "url": "https://u.expo.dev/3ffe1392-be89-48a4-9682-cfc11e3cee79"
+    }
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LoginSession, RdoSummary } from './src/types';
 import { loginAsync } from './src/services/apiClient';
@@ -59,6 +60,37 @@ function AppContent() {
 
   useEffect(() => {
     checkActiveSession();
+  }, []);
+
+  useEffect(() => {
+    if (__DEV__ || !Updates.isEnabled) return;
+    let active = true;
+    void (async () => {
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (!active || !result.isAvailable) return;
+        const fetched = await Updates.fetchUpdateAsync();
+        if (!active || !fetched.isNew) return;
+        Alert.alert(
+          'Atualização disponível',
+          'Uma nova versão do Aniel Next foi baixada. Deseja reiniciar o app agora para aplicar?',
+          [
+            { text: 'Depois', style: 'cancel' },
+            {
+              text: 'Atualizar agora',
+              onPress: () => {
+                void Updates.reloadAsync();
+              },
+            },
+          ]
+        );
+      } catch {
+        // Silent failure when offline or update server unreachable
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   function handleLoginSuccess(newSession: LoginSession) {
