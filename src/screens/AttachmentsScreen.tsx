@@ -23,6 +23,7 @@ import { createFormDataFilePart } from '../services/fileUpload';
 import { detailImageSource } from '../services/detailWorkflow';
 import { VideoPlayerModal } from '../components/VideoPlayerModal';
 import { PhotoViewerModal } from '../components/PhotoViewerModal';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
   session: LoginSession;
@@ -38,6 +39,8 @@ function isImageAttachment(file: RdoAttachment): boolean {
 }
 
 export function AttachmentsScreen({ session, rdo, onBack }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(baseStyles);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -212,27 +215,27 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
     <SafeAreaView style={styles.container}>
       <View style={styles.appBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#1A202C" />
+          <MaterialIcons name="arrow-back" size={24} color={colors.icon} />
         </TouchableOpacity>
         <View style={styles.appBarTitleBox}>
           <Text style={styles.appBarTitle}>Anexos do RDO</Text>
           <Text style={styles.appBarSubtitle}>RDO #{rdo.number}</Text>
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={handlePickMedia} disabled={uploading}>
-          <MaterialIcons name="add" size={24} color="#08776F" />
+          <MaterialIcons name="add" size={24} color={colors.primarySoftText} />
         </TouchableOpacity>
       </View>
 
       {uploading && (
         <View style={styles.uploadingBar}>
-          <ActivityIndicator size="small" color="#08776F" />
+          <ActivityIndicator size="small" color={colors.primary} />
           <Text style={styles.uploadingText}>Enviando anexo para o servidor...</Text>
         </View>
       )}
 
       {loading ? (
         <View style={styles.centerBox}>
-          <ActivityIndicator size="large" color="#08776F" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Consultando anexos...</Text>
         </View>
       ) : (
@@ -242,7 +245,7 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <View style={styles.emptyBox}>
-              <MaterialIcons name="folder-open" size={48} color="#CBD5E0" />
+              <MaterialIcons name="folder-open" size={48} color={colors.borderStrong} />
               <Text style={styles.emptyText}>Nenhum anexo encontrado no servidor.</Text>
               <Text style={styles.emptySubtext}>
                 Clique no botão &quot;+&quot; acima para anexar fotos ou vídeos.
@@ -291,13 +294,19 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
                 <View
                   style={[
                     styles.itemIconCircle,
-                    { backgroundColor: isVideo ? '#E6F4F1' : isImage ? '#EBF8FF' : '#EDF2F7' },
+                    {
+                      backgroundColor: isVideo
+                        ? colors.primarySoft
+                        : isImage
+                        ? colors.infoSoft
+                        : colors.surfaceMuted,
+                    },
                   ]}
                 >
                   <MaterialIcons
                     name={isVideo ? 'play-circle-filled' : isImage ? 'image' : 'insert-drive-file'}
                     size={26}
-                    color={isVideo ? '#08776F' : isImage ? '#2B6CB0' : '#4A5568'}
+                    color={isVideo ? colors.primarySoftText : isImage ? colors.info : colors.iconMuted}
                   />
                 </View>
                 <View style={styles.itemTextCol}>
@@ -329,9 +338,9 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
                       accessibilityLabel="Remover arquivo do servidor"
                     >
                       {deletingId === String(item.id ?? item.uuId ?? item.nomeDocumento) ? (
-                        <ActivityIndicator size="small" color="#C53030" />
+                        <ActivityIndicator size="small" color={colors.danger} />
                       ) : (
-                        <MaterialIcons name="delete-outline" size={20} color="#C53030" />
+                        <MaterialIcons name="delete-outline" size={20} color={colors.danger} />
                       )}
                     </TouchableOpacity>
                   )}
@@ -365,7 +374,7 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F7FAFC',

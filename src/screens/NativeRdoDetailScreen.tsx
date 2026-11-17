@@ -46,6 +46,7 @@ import { EquipmentAuditPanel } from '../components/EquipmentAuditPanel';
 import { SignaturePad } from '../components/SignaturePad';
 import { PhotoViewerModal } from '../components/PhotoViewerModal';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
   session: LoginSession;
@@ -62,6 +63,8 @@ interface GalleryEntry {
 }
 
 export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(baseStyles, ['signaturePreviewBox', 'signatureImage']);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -644,7 +647,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
           }}
           style={styles.backBtn}
         >
-          <MaterialIcons name="arrow-back" size={24} color="#1A202C" />
+          <MaterialIcons name="arrow-back" size={24} color={colors.icon} />
         </TouchableOpacity>
         <View style={styles.appBarTitleBox}>
           <Text style={styles.appBarTitle}>Detalhamento do RDO</Text>
@@ -658,10 +661,10 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
           disabled={busy || refreshing}
         >
           {busy || refreshing ? (
-            <ActivityIndicator size="small" color="#08776F" />
+            <ActivityIndicator size="small" color={colors.primarySoftText} />
           ) : (
             <>
-              <MaterialIcons name="sync" size={18} color="#08776F" />
+              <MaterialIcons name="sync" size={18} color={colors.primarySoftText} />
               <Text style={styles.refreshBtnText}>Puxar dados</Text>
             </>
           )}
@@ -671,7 +674,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {/* Top helper notice */}
         <View style={styles.refreshNoticeBox}>
-          <MaterialIcons name="cloud-download" size={16} color="#08776F" />
+          <MaterialIcons name="cloud-download" size={16} color={colors.primarySoftText} />
           <Text style={styles.refreshNoticeText}>
             Respostas, fotos e assinaturas sincronizadas com o servidor.
           </Text>
@@ -680,13 +683,13 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
         {/* Error & Status Banners */}
         {error.length > 0 && (
           <View style={styles.errorBanner}>
-            <MaterialIcons name="error-outline" size={20} color="#C53030" />
+            <MaterialIcons name="error-outline" size={20} color={colors.danger} />
             <Text style={styles.errorBannerText}>{error}</Text>
           </View>
         )}
         {message.length > 0 && (
           <View style={styles.infoBanner}>
-            <MaterialIcons name="check-circle-outline" size={20} color="#08776F" />
+            <MaterialIcons name="check-circle-outline" size={20} color={colors.primarySoftText} />
             <Text style={styles.infoBannerText}>{message}</Text>
           </View>
         )}
@@ -702,7 +705,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
               <MaterialIcons
                 name={showDiagnostic ? 'expand-less' : 'expand-more'}
                 size={20}
-                color="#4A5568"
+                color={colors.textSecondary}
               />
             </TouchableOpacity>
             {showDiagnostic && <Text style={styles.diagnosticPre}>{diagnostic}</Text>}
@@ -741,7 +744,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
 
             {loaded && doneList.length === 0 && (
               <View style={styles.emptyCard}>
-                <MaterialIcons name="assignment-late" size={36} color="#CBD5E0" />
+                <MaterialIcons name="assignment-late" size={36} color={colors.borderStrong} />
                 <Text style={styles.emptyCardText}>
                   Nenhum detalhamento salvo foi retornado por esta consulta para o RDO #{rdo.number}
                   , projeto {rdo.project}.
@@ -822,7 +825,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                                   })
                                 }
                               >
-                                <MaterialIcons name="draw" size={16} color="#2D3748" />
+                                <MaterialIcons name="draw" size={16} color={colors.textSecondary} />
                                 <Text style={styles.secondaryActionBtnText}>
                                   {getText(sigRow, 'resposta').length > 0
                                     ? 'Alterar assinatura salva…'
@@ -900,7 +903,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                                       : 'edit'
                                   }
                                   size={16}
-                                  color="#2D3748"
+                                  color={colors.textSecondary}
                                 />
                                 <Text style={styles.secondaryActionBtnText}>
                                   {isScannerOrSerialQuestion(getText(row, 'pergunta'), qType)
@@ -986,7 +989,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                                     <MaterialIcons
                                       name="add-photo-alternate"
                                       size={18}
-                                      color="#2D3748"
+                                      color={colors.textSecondary}
                                     />
                                     <Text style={styles.secondaryActionBtnText}>
                                       Adicionar fotos ao detalhamento salvo
@@ -1070,7 +1073,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                         <TextInput
                           style={styles.optionFilterInput}
                           placeholder="Buscar opção…"
-                          placeholderTextColor="#A0AEC0"
+                          placeholderTextColor={colors.placeholder}
                           value={optionFilterText}
                           onChangeText={setOptionFilterText}
                         />
@@ -1103,7 +1106,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                               <MaterialIcons
                                 name={selected ? 'radio-button-checked' : 'radio-button-unchecked'}
                                 size={20}
-                                color={selected ? '#08776F' : '#A0AEC0'}
+                                color={selected ? colors.primarySoftText : colors.placeholder}
                               />
                               <Text
                                 style={[
@@ -1119,7 +1122,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                       <TextInput
                         style={[styles.singleInput, { marginTop: 8 }]}
                         placeholder="Ou digite o valor personalizado"
-                        placeholderTextColor="#A0AEC0"
+                        placeholderTextColor={colors.placeholder}
                         value={
                           options.some(
                             (o) =>
@@ -1155,7 +1158,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                             <MaterialIcons
                               name={checked ? 'check-box' : 'check-box-outline-blank'}
                               size={20}
-                              color={checked ? '#08776F' : '#A0AEC0'}
+                              color={checked ? colors.primarySoftText : colors.placeholder}
                             />
                             <Text
                               style={[styles.choiceText, checked && styles.choiceTextSelected]}
@@ -1205,7 +1208,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                           style={styles.secondaryActionBtn}
                           onPress={() => handleAddDraftPhotos(qIdx, true)}
                         >
-                          <MaterialIcons name="photo-camera" size={18} color="#2D3748" />
+                          <MaterialIcons name="photo-camera" size={18} color={colors.textSecondary} />
                           <Text style={styles.secondaryActionBtnText}>Capturar foto</Text>
                         </TouchableOpacity>
 
@@ -1214,7 +1217,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                             style={styles.secondaryActionBtn}
                             onPress={() => handleAddDraftPhotos(qIdx, false)}
                           >
-                            <MaterialIcons name="photo-library" size={18} color="#2D3748" />
+                            <MaterialIcons name="photo-library" size={18} color={colors.textSecondary} />
                             <Text style={styles.secondaryActionBtnText}>Várias da galeria</Text>
                           </TouchableOpacity>
                         )}
@@ -1264,7 +1267,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                         style={styles.secondaryActionBtn}
                         onPress={() => handleLocateDraftQuestion(qIdx)}
                       >
-                        <MaterialIcons name="my-location" size={18} color="#2D3748" />
+                        <MaterialIcons name="my-location" size={18} color={colors.textSecondary} />
                         <Text style={styles.secondaryActionBtnText}>Obter localização</Text>
                       </TouchableOpacity>
                       <Text style={styles.geoValueText}>
@@ -1295,7 +1298,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                         multiline
                         numberOfLines={4}
                         placeholder="Digite os seriais ou use o scanner da câmera acima (um por linha ou com ;)"
-                        placeholderTextColor="#A0AEC0"
+                        placeholderTextColor={colors.placeholder}
                         value={item.value}
                         onChangeText={(txt) =>
                           updateActiveDraftQuestion(qIdx, (prev) => ({ ...prev, value: txt }))
@@ -1329,7 +1332,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                           ? 'Informe o valor numérico'
                           : 'Digite sua resposta'
                       }
-                      placeholderTextColor="#A0AEC0"
+                      placeholderTextColor={colors.placeholder}
                       keyboardType={type === 'Valor' ? 'numeric' : 'default'}
                       value={item.value}
                       onChangeText={(txt) =>
@@ -1463,7 +1466,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                     multiline
                     numberOfLines={4}
                     placeholder="Edite os seriais ou leia novos com a câmera acima"
-                    placeholderTextColor="#A0AEC0"
+                    placeholderTextColor={colors.placeholder}
                     value={answerEditModal.value}
                     onChangeText={(txt) =>
                       setAnswerEditModal((prev) => (prev ? { ...prev, value: txt } : null))
@@ -1494,7 +1497,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                     <TextInput
                       style={styles.optionFilterInput}
                       placeholder="Filtrar opções…"
-                      placeholderTextColor="#A0AEC0"
+                      placeholderTextColor={colors.placeholder}
                       value={optionFilterText}
                       onChangeText={setOptionFilterText}
                     />
@@ -1533,7 +1536,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                             <MaterialIcons
                               name={selected ? 'radio-button-checked' : 'radio-button-unchecked'}
                               size={20}
-                              color={selected ? '#08776F' : '#A0AEC0'}
+                              color={selected ? colors.primarySoftText : colors.placeholder}
                             />
                             <Text
                               style={[
@@ -1553,7 +1556,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                   <TextInput
                     style={styles.singleInput}
                     placeholder="Digite o valor personalizado"
-                    placeholderTextColor="#A0AEC0"
+                    placeholderTextColor={colors.placeholder}
                     value={answerEditModal.value}
                     onChangeText={(txt) =>
                       setAnswerEditModal((prev) => (prev ? { ...prev, value: txt } : null))
@@ -1751,7 +1754,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
 
               {error.length > 0 && (
                 <View style={styles.errorBanner}>
-                  <MaterialIcons name="error-outline" size={18} color="#C53030" />
+                  <MaterialIcons name="error-outline" size={18} color={colors.danger} />
                   <Text style={styles.errorBannerText}>{error}</Text>
                 </View>
               )}
@@ -1768,7 +1771,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                     onPress={handlePickSavedPhotosToAdd}
                     disabled={busy}
                   >
-                    <MaterialIcons name="photo-library" size={18} color="#2D3748" />
+                    <MaterialIcons name="photo-library" size={18} color={colors.textSecondary} />
                     <Text style={styles.secondaryActionBtnText}>Selecionar várias imagens</Text>
                   </TouchableOpacity>
 
@@ -1901,7 +1904,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F7FAFC',

@@ -2,12 +2,15 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { analyzeEquipmentAudit } from '../services/equipmentAudit';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
   rows: any[];
 }
 
 export function EquipmentAuditPanel({ rows }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(baseStyles);
   const [expandedInvalid, setExpandedInvalid] = useState<Record<string, boolean>>({});
   const items = analyzeEquipmentAudit(rows);
 
@@ -16,7 +19,7 @@ export function EquipmentAuditPanel({ rows }: Props) {
   return (
     <View style={styles.panel}>
       <View style={styles.header}>
-        <MaterialIcons name="fact-check" size={20} color="#08776F" />
+        <MaterialIcons name="fact-check" size={20} color={colors.primarySoftText} />
         <View style={styles.headerTextCol}>
           <Text style={styles.title}>Conferência de equipamentos e seriais</Text>
           <Text style={styles.subtitle}>
@@ -91,7 +94,7 @@ export function EquipmentAuditPanel({ rows }: Props) {
                     <MaterialIcons
                       name={isOpen ? 'expand-less' : 'expand-more'}
                       size={18}
-                      color="#9C4221"
+                      color={colors.warningText}
                     />
                   </TouchableOpacity>
                   {isOpen && (
@@ -107,7 +110,7 @@ export function EquipmentAuditPanel({ rows }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   panel: {
     backgroundColor: '#FFF',
     borderRadius: 14,

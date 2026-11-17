@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getOpenRdosAsync, getClosedRdosAsync } from '../services/apiClient';
 import { LoginSession, RdoSummary } from '../types';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
   session: LoginSession;
@@ -23,6 +24,8 @@ interface Props {
 }
 
 export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: Props) {
+  const { isDark, colors, toggleTheme } = useTheme();
+  const styles = useThemedStyles(baseStyles);
   const [activeTab, setActiveTab] = useState<'abertos' | 'fechados'>('abertos');
   const [loading, setLoading] = useState(false);
   const [rdos, setRdos] = useState<RdoSummary[]>([]);
@@ -59,14 +62,14 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
   function getStatusStyle(status: string) {
     switch (status) {
       case 'Atendendo':
-        return { bg: '#FEFCBF', text: '#B7791F' };
+        return { bg: colors.warningSoft, text: colors.warningText };
       case 'Atendido':
-        return { bg: '#C6F6D5', text: '#22543D' };
+        return { bg: colors.successSoft, text: colors.successText };
       case 'FechadaProdutiva':
       case 'FechadaImprodutiva':
-        return { bg: '#E2E8F0', text: '#4A5568' };
+        return { bg: colors.surfaceMuted, text: colors.textSecondary };
       default:
-        return { bg: '#E6F4F1', text: '#08776F' };
+        return { bg: colors.primarySoft, text: colors.primarySoftText };
     }
   }
 
@@ -74,15 +77,28 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
     <SafeAreaView style={styles.container}>
       {/* App Bar */}
       <View style={styles.appBar}>
-        <View>
+        <View style={{ flex: 1, marginRight: 8 }}>
           <Text style={styles.appBarTitle}>Obras & RDO</Text>
-          <Text style={styles.appBarSubtitle}>
+          <Text style={styles.appBarSubtitle} numberOfLines={1}>
             {session.name} • Equipe {session.team}
           </Text>
         </View>
-        <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
-          <MaterialIcons name="logout" size={22} color="#E53E3E" />
-        </TouchableOpacity>
+        <View style={styles.appBarActions}>
+          <TouchableOpacity
+            style={styles.themeBtn}
+            onPress={toggleTheme}
+            accessibilityLabel={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
+          >
+            <MaterialIcons
+              name={isDark ? 'light-mode' : 'dark-mode'}
+              size={22}
+              color={colors.primarySoftText}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
+            <MaterialIcons name="logout" size={22} color={colors.danger} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Tabs */}
@@ -107,26 +123,28 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
 
       {/* Search Bar */}
       <View style={styles.searchBar}>
-        <MaterialIcons name="search" size={20} color="#718096" style={styles.searchIcon} />
+        <MaterialIcons name="search" size={20} color={colors.iconMuted} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
           placeholder="Buscar por obra, INEP, contrato ou endereço..."
-          placeholderTextColor="#A0AEC0"
+          placeholderTextColor={colors.placeholder}
           value={search}
           onChangeText={setSearch}
         />
         {search.length > 0 && (
           <TouchableOpacity onPress={() => setSearch('')}>
-            <MaterialIcons name="clear" size={18} color="#718096" />
+            <MaterialIcons name="clear" size={18} color={colors.iconMuted} />
           </TouchableOpacity>
         )}
       </View>
 
-      <Text style={{paddingHorizontal:20,color:'#4A5568'}}>{filteredRdos.length} encontrado(s) de {rdos.length} RDOs</Text>
+      <Text style={{ paddingHorizontal: 20, marginBottom: 4, color: colors.textSecondary }}>
+        {filteredRdos.length} encontrado(s) de {rdos.length} RDOs
+      </Text>
       {/* List */}
       {loading && rdos.length === 0 ? (
         <View style={styles.centerBox}>
-          <ActivityIndicator size="large" color="#08776F" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Carregando obras...</Text>
         </View>
       ) : (
@@ -135,11 +153,16 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
           keyExtractor={(item, idx) => `${item.number}-${idx}`}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={loading} onRefresh={fetchRdos} colors={['#08776F']} />
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={fetchRdos}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
           }
           ListEmptyComponent={
             <View style={styles.emptyBox}>
-              <MaterialIcons name="assignment-late" size={48} color="#CBD5E0" />
+              <MaterialIcons name="assignment-late" size={48} color={colors.borderStrong} />
               <Text style={styles.emptyText}>Nenhum RDO encontrado.</Text>
             </View>
           }
@@ -169,7 +192,7 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
 
                 {item.address ? (
                   <View style={styles.addressRow}>
-                    <MaterialIcons name="location-on" size={16} color="#718096" />
+                    <MaterialIcons name="location-on" size={16} color={colors.iconMuted} />
                     <Text style={styles.addressText} numberOfLines={2}>
                       {item.address}
                     </Text>
@@ -195,7 +218,17 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
+  appBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  themeBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#E6F4F1',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F7FAFC',

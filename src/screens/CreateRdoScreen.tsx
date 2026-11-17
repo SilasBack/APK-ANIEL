@@ -25,6 +25,7 @@ import {
   getServiceTypesAsync,
   getServiceSubtypesAsync,
 } from '../services/apiClient';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
   session: LoginSession;
@@ -62,6 +63,8 @@ function serviceLabel(item: any): string {
 }
 
 export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(baseStyles);
   const { width, height } = useWindowDimensions();
   const isCompact = width < 360;
   const horizontalPad = isCompact ? 12 : 16;
@@ -497,7 +500,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
       {/* App Bar */}
       <View style={styles.appBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn} disabled={submitting}>
-          <MaterialIcons name="arrow-back" size={24} color="#1A202C" />
+          <MaterialIcons name="arrow-back" size={24} color={colors.icon} />
         </TouchableOpacity>
         <View style={styles.appBarTitleCol}>
           <Text style={styles.appBarTitle} numberOfLines={1}>
@@ -513,9 +516,9 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
           disabled={loadingContracts || submitting}
         >
           {loadingContracts ? (
-            <ActivityIndicator size="small" color="#08776F" />
+            <ActivityIndicator size="small" color={colors.primarySoftText} />
           ) : (
-            <MaterialIcons name="refresh" size={22} color="#08776F" />
+            <MaterialIcons name="refresh" size={22} color={colors.primarySoftText} />
           )}
         </TouchableOpacity>
       </View>
@@ -546,7 +549,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
             <View style={[styles.card, isCompact && styles.cardCompact]}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.cardHeader}>Dados do Contrato</Text>
-                {loadingContracts && <ActivityIndicator size="small" color="#08776F" />}
+                {loadingContracts && <ActivityIndicator size="small" color={colors.primarySoftText} />}
               </View>
 
               {/* Contrato */}
@@ -560,7 +563,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                 <TextInput
                   style={[styles.input, styles.comboInput]}
                   placeholder="Ex: 0002"
-                  placeholderTextColor="#A0AEC0"
+                  placeholderTextColor={colors.placeholder}
                   value={contract}
                   onChangeText={(txt) => handleSelectContract(txt)}
                   autoCapitalize="characters"
@@ -571,7 +574,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   onPress={() => openPicker('contract')}
                   disabled={loadingContracts || submitting}
                 >
-                  <MaterialIcons name="arrow-drop-down" size={22} color="#08776F" />
+                  <MaterialIcons name="arrow-drop-down" size={22} color={colors.primarySoftText} />
                   <Text style={styles.selectBtnText}>Opções</Text>
                 </TouchableOpacity>
               </View>
@@ -587,7 +590,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                 <TextInput
                   style={[styles.input, styles.comboInput]}
                   placeholder="Digite ou selecione o INEP"
-                  placeholderTextColor="#A0AEC0"
+                  placeholderTextColor={colors.placeholder}
                   value={project}
                   onChangeText={(txt) => handleSelectProject(txt)}
                   autoCapitalize="characters"
@@ -601,7 +604,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   <MaterialIcons
                     name="arrow-drop-down"
                     size={22}
-                    color={projectList.length > 0 ? '#08776F' : '#A0AEC0'}
+                    color={projectList.length > 0 ? colors.primarySoftText : colors.placeholder}
                   />
                   <Text
                     style={[
@@ -627,7 +630,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                 <TextInput
                   style={[styles.input, styles.comboInput]}
                   placeholder="Ex: 100-ESCOLA_CONECTADA"
-                  placeholderTextColor="#A0AEC0"
+                  placeholderTextColor={colors.placeholder}
                   value={evento}
                   onChangeText={setEvento}
                   autoCapitalize="characters"
@@ -641,7 +644,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   <MaterialIcons
                     name="arrow-drop-down"
                     size={22}
-                    color={eventList.length > 0 ? '#08776F' : '#A0AEC0'}
+                    color={eventList.length > 0 ? colors.primarySoftText : colors.placeholder}
                   />
                   <Text
                     style={[
@@ -658,7 +661,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
               <View style={styles.labelRow}>
                 <Text style={styles.labelInline}>Tipo de Serviço *</Text>
                 {loadingServices ? (
-                  <ActivityIndicator size="small" color="#08776F" />
+                  <ActivityIndicator size="small" color={colors.primarySoftText} />
                 ) : services.length > 0 ? (
                   <Text style={styles.countHint}>{services.length} opção(ões)</Text>
                 ) : null}
@@ -667,7 +670,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                 <TextInput
                   style={[styles.input, styles.comboInput]}
                   placeholder="Selecione ou digite o serviço"
-                  placeholderTextColor="#A0AEC0"
+                  placeholderTextColor={colors.placeholder}
                   value={serviceName}
                   onChangeText={(txt) => handleSelectService(txt)}
                   editable={!submitting}
@@ -680,7 +683,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   <MaterialIcons
                     name="arrow-drop-down"
                     size={22}
-                    color={services.length > 0 ? '#08776F' : '#A0AEC0'}
+                    color={services.length > 0 ? colors.primarySoftText : colors.placeholder}
                   />
                   <Text
                     style={[
@@ -699,7 +702,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   Subtipo de Serviço {subtypes.length > 0 ? '*' : '(opcional)'}
                 </Text>
                 {loadingSubtypes ? (
-                  <ActivityIndicator size="small" color="#08776F" />
+                  <ActivityIndicator size="small" color={colors.primarySoftText} />
                 ) : subtypes.length > 0 ? (
                   <Text style={styles.countHint}>{subtypes.length} opção(ões)</Text>
                 ) : null}
@@ -708,7 +711,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                 <TextInput
                   style={[styles.input, styles.comboInput]}
                   placeholder="Selecione ou digite o subtipo"
-                  placeholderTextColor="#A0AEC0"
+                  placeholderTextColor={colors.placeholder}
                   value={subtypeName}
                   onChangeText={(txt) => handleSelectSubtype(txt)}
                   editable={!submitting}
@@ -721,7 +724,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   <MaterialIcons
                     name="arrow-drop-down"
                     size={22}
-                    color={subtypes.length > 0 ? '#08776F' : '#A0AEC0'}
+                    color={subtypes.length > 0 ? colors.primarySoftText : colors.placeholder}
                   />
                   <Text
                     style={[
@@ -741,7 +744,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   <TextInput
                     style={styles.input}
                     placeholder="Informe o número do RDO"
-                    placeholderTextColor="#A0AEC0"
+                    placeholderTextColor={colors.placeholder}
                     value={obra}
                     onChangeText={setObra}
                     editable={!submitting}
@@ -750,7 +753,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
               ) : selectedContractObj ? (
                 <View style={styles.metaPillsRow}>
                   <View style={styles.metaPill}>
-                    <MaterialIcons name="tag" size={14} color="#08776F" />
+                    <MaterialIcons name="tag" size={14} color={colors.primarySoftText} />
                     <Text style={styles.metaPillText}>Numeração automática pelo servidor</Text>
                   </View>
                   {requiresGps && (
@@ -767,14 +770,14 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
             <View style={[styles.card, isCompact && styles.cardCompact]}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.cardHeader}>Endereço da Obra</Text>
-                {loadingCep && <ActivityIndicator size="small" color="#08776F" />}
+                {loadingCep && <ActivityIndicator size="small" color={colors.primarySoftText} />}
               </View>
 
               <Text style={styles.label}>CEP (busca automática)</Text>
               <TextInput
                 style={styles.input}
                 placeholder="00000-000"
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.placeholder}
                 keyboardType="numeric"
                 value={cep}
                 onChangeText={handleCepChange}
@@ -786,7 +789,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
               <TextInput
                 style={styles.input}
                 placeholder="Rua, Avenida..."
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.placeholder}
                 value={rua}
                 onChangeText={setRua}
                 editable={!submitting}
@@ -798,7 +801,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   <TextInput
                     style={styles.input}
                     placeholder="Nº ou S/N"
-                    placeholderTextColor="#A0AEC0"
+                    placeholderTextColor={colors.placeholder}
                     value={numero}
                     onChangeText={setNumero}
                     editable={!submitting}
@@ -809,7 +812,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   <TextInput
                     style={styles.input}
                     placeholder="Bairro"
-                    placeholderTextColor="#A0AEC0"
+                    placeholderTextColor={colors.placeholder}
                     value={bairro}
                     onChangeText={setBairro}
                     editable={!submitting}
@@ -823,7 +826,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   <TextInput
                     style={styles.input}
                     placeholder="Cidade"
-                    placeholderTextColor="#A0AEC0"
+                    placeholderTextColor={colors.placeholder}
                     value={cidade}
                     onChangeText={setCidade}
                     editable={!submitting}
@@ -834,7 +837,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                   <TextInput
                     style={styles.input}
                     placeholder="UF"
-                    placeholderTextColor="#A0AEC0"
+                    placeholderTextColor={colors.placeholder}
                     value={uf}
                     onChangeText={setUf}
                     maxLength={2}
@@ -848,7 +851,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
               <TextInput
                 style={styles.input}
                 placeholder="Ex: Sala 2, Bloco B"
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.placeholder}
                 value={complemento}
                 onChangeText={setComplemento}
                 editable={!submitting}
@@ -899,7 +902,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
               <TextInput
                 style={styles.searchInput}
                 placeholder={picker?.placeholder || 'Buscar...'}
-                placeholderTextColor="#A0AEC0"
+                placeholderTextColor={colors.placeholder}
                 value={pickerSearch}
                 onChangeText={setPickerSearch}
                 autoFocus={false}
@@ -938,7 +941,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
                         <Text style={styles.optionSub}>{item.subtitle}</Text>
                       ) : null}
                     </View>
-                    {isSelected && <MaterialIcons name="check-circle" size={20} color="#08776F" />}
+                    {isSelected && <MaterialIcons name="check-circle" size={20} color={colors.primarySoftText} />}
                   </TouchableOpacity>
                 );
               }}
@@ -950,7 +953,7 @@ export function CreateRdoScreen({ session, onBack, onCreated }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   flex: {
     flex: 1,
   },

@@ -22,6 +22,7 @@ import { getClientDevice } from '../services/storage';
 import { detailImageSource } from '../services/detailWorkflow';
 import { CONFIG } from '../constants/config';
 import { VideoPlayerModal } from '../components/VideoPlayerModal';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
   session: LoginSession;
@@ -40,6 +41,8 @@ export function RdoDetailScreen({
   onOpenBaixar,
   onOpenAttachments,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(baseStyles);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [attachments, setAttachments] = useState<RdoAttachment[]>([]);
   const [hasServerVideo, setHasServerVideo] = useState<boolean | null>(null);
@@ -148,7 +151,7 @@ export function RdoDetailScreen({
       {/* App Bar */}
       <View style={styles.appBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#1A202C" />
+          <MaterialIcons name="arrow-back" size={24} color={colors.icon} />
         </TouchableOpacity>
         <View style={styles.appBarTitleBox}>
           <Text style={styles.appBarTitle}>RDO #{rdo.number}</Text>
@@ -188,7 +191,7 @@ export function RdoDetailScreen({
               onPress={() => handleStatusChange('Deslocando')}
               disabled={updatingStatus}
             >
-              <MaterialIcons name="directions-car" size={18} color="#2D3748" />
+              <MaterialIcons name="directions-car" size={18} color={colors.textSecondary} />
               <Text style={styles.statusActionText}>Deslocamento</Text>
             </TouchableOpacity>
 
@@ -200,15 +203,20 @@ export function RdoDetailScreen({
               disabled={updatingStatus}
             >
               {updatingStatus ? (
-                <ActivityIndicator size="small" color="#08776F" />
+                <ActivityIndicator size="small" color={colors.primarySoftText} />
               ) : (
                 <>
                   <MaterialIcons
                     name={currentStatus === 'Atendendo' ? 'stop-circle' : 'play-circle-outline'}
                     size={18}
-                    color="#08776F"
+                    color={colors.primarySoftText}
                   />
-                  <Text style={[styles.statusActionText, { color: '#08776F', fontWeight: 'bold' }]}>
+                  <Text
+                    style={[
+                      styles.statusActionText,
+                      { color: colors.primarySoftText, fontWeight: 'bold' },
+                    ]}
+                  >
                     {currentStatus === 'Atendendo' ? 'Finalizar Atend.' : 'Iniciar Atend.'}
                   </Text>
                 </>
@@ -259,19 +267,19 @@ export function RdoDetailScreen({
           ]}
         >
           {loadingAttachments ? (
-            <ActivityIndicator size="small" color="#08776F" />
+            <ActivityIndicator size="small" color={colors.primary} />
           ) : (
             <MaterialIcons
               name={hasServerVideo ? 'check-circle' : 'videocam-off'}
               size={24}
-              color={hasServerVideo ? '#2F855A' : '#C05621'}
+              color={hasServerVideo ? colors.success : colors.warning}
             />
           )}
           <View style={styles.noticeTextContainer}>
             <Text
               style={[
                 styles.noticeTitle,
-                { color: hasServerVideo ? '#22543D' : '#7B341E' },
+                { color: hasServerVideo ? colors.successText : colors.warningText },
               ]}
             >
               {loadingAttachments
@@ -283,7 +291,7 @@ export function RdoDetailScreen({
             <Text
               style={[
                 styles.noticeDesc,
-                { color: hasServerVideo ? '#276749' : '#9C4221' },
+                { color: hasServerVideo ? colors.successText : colors.warningText },
               ]}
             >
               {hasServerVideo
@@ -355,14 +363,14 @@ export function RdoDetailScreen({
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem} onPress={onOpenAttachments}>
-          <View style={[styles.menuIconCircle, { backgroundColor: '#EBF8FF' }]}>
-            <MaterialIcons name="attach-file" size={22} color="#2B6CB0" />
+          <View style={[styles.menuIconCircle, { backgroundColor: colors.infoSoft }]}>
+            <MaterialIcons name="attach-file" size={22} color={colors.info} />
           </View>
           <View style={styles.menuTextCol}>
             <Text style={styles.menuTitle}>Anexar Arquivos & Vídeo</Text>
             <Text style={styles.menuDesc}>{attachments.length} anexo(s) no servidor</Text>
           </View>
-          <MaterialIcons name="chevron-right" size={22} color="#CBD5E0" />
+          <MaterialIcons name="chevron-right" size={22} color={colors.iconMuted} />
         </TouchableOpacity>
       </ScrollView>
 
@@ -407,7 +415,7 @@ export function RdoDetailScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F7FAFC',

@@ -14,6 +14,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { LoginSession, RdoSummary, Encerramento } from '../types';
 import { getRdoEndingsAsync, baixarRdoAsync } from '../services/apiClient';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
   session: LoginSession;
@@ -23,6 +24,8 @@ interface Props {
 }
 
 export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(baseStyles);
   const [endings, setEndings] = useState<Encerramento[]>([]);
   const [loadingEndings, setLoadingEndings] = useState(true);
   const [selectedEnding, setSelectedEnding] = useState<Encerramento | null>(null);
@@ -137,7 +140,7 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
       {/* App Bar */}
       <View style={styles.appBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn} disabled={submitting}>
-          <MaterialIcons name="arrow-back" size={24} color="#1A202C" />
+          <MaterialIcons name="arrow-back" size={24} color={colors.icon} />
         </TouchableOpacity>
         <View style={styles.appBarTitleBox}>
           <Text style={styles.appBarTitle}>Baixar Atividade</Text>
@@ -162,7 +165,7 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
             <Text style={styles.summaryValue}>{session.name}</Text>
           </View>
           <View style={styles.gpsRow}>
-            <MaterialIcons name="my-location" size={16} color="#08776F" />
+            <MaterialIcons name="my-location" size={16} color={colors.primarySoftText} />
             <Text style={styles.gpsText}>{locationStatus}</Text>
           </View>
         </View>
@@ -171,7 +174,7 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
         <View style={styles.card}>
           <Text style={styles.cardHeader}>Motivo de Encerramento *</Text>
           {loadingEndings ? (
-            <ActivityIndicator size="small" color="#08776F" style={{ marginVertical: 16 }} />
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 16 }} />
           ) : endings.length === 0 ? (
             <Text style={styles.emptyText}>Nenhum motivo de encerramento disponível.</Text>
           ) : (
@@ -187,7 +190,7 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
                     <MaterialIcons
                       name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
                       size={20}
-                      color={isSelected ? '#08776F' : '#A0AEC0'}
+                      color={isSelected ? colors.primarySoftText : colors.placeholder}
                     />
                     <Text
                       style={[
@@ -210,7 +213,7 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
           <TextInput
             style={styles.obsInput}
             placeholder="Digite detalhes da conclusão da atividade..."
-            placeholderTextColor="#A0AEC0"
+            placeholderTextColor={colors.placeholder}
             multiline
             numberOfLines={4}
             value={observation}
@@ -239,7 +242,7 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F7FAFC',

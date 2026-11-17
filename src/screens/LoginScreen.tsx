@@ -16,12 +16,16 @@ import { CONFIG } from '../constants/config';
 import { loginAsync } from '../services/apiClient';
 import { getClientDevice, getSavedLogins, saveLogin, removeSavedLogin, setStoredSession } from '../services/storage';
 import { LoginSession, SavedLogin } from '../types';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Props {
   onLoginSuccess: (session: LoginSession) => void;
 }
 
 export function LoginScreen({ onLoginSuccess }: Props) {
+  const { isDark, colors, toggleTheme } = useTheme();
+  const styles = useThemedStyles(baseStyles);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -82,26 +86,37 @@ export function LoginScreen({ onLoginSuccess }: Props) {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.iconCircle}>
-            <MaterialIcons name="engineering" size={40} color="#08776F" />
+    <SafeAreaView style={styles.container}>
+      <View style={styles.themeBar}>
+        <TouchableOpacity style={styles.themeToggleBtn} onPress={toggleTheme}>
+          <MaterialIcons
+            name={isDark ? 'light-mode' : 'dark-mode'}
+            size={18}
+            color={colors.primarySoftText}
+          />
+          <Text style={styles.themeToggleText}>{isDark ? 'Modo claro' : 'Modo escuro'}</Text>
+        </TouchableOpacity>
+      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.iconCircle}>
+              <MaterialIcons name="engineering" size={40} color={colors.primarySoftText} />
+            </View>
+            <Text style={styles.title}>Aniel Next</Text>
+            <Text style={styles.subtitle}>Gestão de Obras & RDO</Text>
+
+            <View style={styles.companyBadge}>
+              <MaterialIcons name="business" size={16} color={colors.primarySoftText} />
+              <Text style={styles.companyText}>
+                Empresa {CONFIG.COMPANY_CODE} • {CONFIG.COMPANY_NAME}
+              </Text>
+            </View>
           </View>
-          <Text style={styles.title}>Aniel Next</Text>
-          <Text style={styles.subtitle}>Gestão de Obras & RDO</Text>
-          
-          <View style={styles.companyBadge}>
-            <MaterialIcons name="business" size={16} color="#08776F" />
-            <Text style={styles.companyText}>
-              Empresa {CONFIG.COMPANY_CODE} • {CONFIG.COMPANY_NAME}
-            </Text>
-          </View>
-        </View>
 
         {/* Saved Logins Chips */}
         {savedLogins.length > 0 && (
@@ -120,7 +135,9 @@ export function LoginScreen({ onLoginSuccess }: Props) {
                     <MaterialIcons
                       name="person"
                       size={16}
-                      color={username.toLowerCase() === item.login.toLowerCase() ? '#FFF' : '#333'}
+                      color={
+                        username.toLowerCase() === item.login.toLowerCase() ? '#FFF' : colors.textSecondary
+                      }
                     />
                     <Text
                       style={[
@@ -147,11 +164,16 @@ export function LoginScreen({ onLoginSuccess }: Props) {
         <View style={styles.card}>
           <Text style={styles.label}>Usuário</Text>
           <View style={styles.inputContainer}>
-            <MaterialIcons name="account-circle" size={20} color="#666" style={styles.inputIcon} />
+            <MaterialIcons
+              name="account-circle"
+              size={20}
+              color={colors.iconMuted}
+              style={styles.inputIcon}
+            />
             <TextInput
               style={styles.input}
               placeholder="Digite seu usuário ou matrícula"
-              placeholderTextColor="#999"
+              placeholderTextColor={colors.placeholder}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
@@ -161,11 +183,11 @@ export function LoginScreen({ onLoginSuccess }: Props) {
 
           <Text style={styles.label}>Senha</Text>
           <View style={styles.inputContainer}>
-            <MaterialIcons name="lock" size={20} color="#666" style={styles.inputIcon} />
+            <MaterialIcons name="lock" size={20} color={colors.iconMuted} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Digite sua senha"
-              placeholderTextColor="#999"
+              placeholderTextColor={colors.placeholder}
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
@@ -178,7 +200,7 @@ export function LoginScreen({ onLoginSuccess }: Props) {
               <MaterialIcons
                 name={showPassword ? 'visibility-off' : 'visibility'}
                 size={20}
-                color="#666"
+                color={colors.iconMuted}
               />
             </TouchableOpacity>
           </View>
@@ -202,11 +224,35 @@ export function LoginScreen({ onLoginSuccess }: Props) {
           <Text style={styles.footerVersion}>{CONFIG.APP_VERSION}</Text>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
+  themeBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  themeToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E6F4F1',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  themeToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#08776F',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F5F7FA',

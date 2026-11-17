@@ -12,6 +12,7 @@ import { NativeRdoDetailScreen } from './src/screens/NativeRdoDetailScreen';
 import { CreateRdoScreen } from './src/screens/CreateRdoScreen';
 import { BaixarAtividadeScreen } from './src/screens/BaixarAtividadeScreen';
 import { AttachmentsScreen } from './src/screens/AttachmentsScreen';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 
 type Screen =
   | 'login'
@@ -23,6 +24,17 @@ type Screen =
   | 'attachments';
 
 export default function App() {
+  return (
+    <ThemeProvider>
+      <SafeAreaProvider>
+        <AppContent />
+      </SafeAreaProvider>
+    </ThemeProvider>
+  );
+}
+
+function AppContent() {
+  const { isDark, colors } = useTheme();
   const [session, setSession] = useState<LoginSession | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [selectedRdo, setSelectedRdo] = useState<RdoSummary | null>(null);
@@ -68,16 +80,17 @@ export default function App() {
 
   if (initializing) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#08776F" />
+      <View style={[styles.center, { backgroundColor: colors.bg }]}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <View style={styles.container}>
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
         {currentScreen === 'login' && (
           <LoginScreen onLoginSuccess={handleLoginSuccess} />
         )}
@@ -139,7 +152,7 @@ export default function App() {
           />
         )}
       </View>
-    </SafeAreaProvider>
+    </>
   );
 }
 

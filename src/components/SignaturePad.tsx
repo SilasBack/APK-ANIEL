@@ -8,6 +8,7 @@ import {
   GestureResponderEvent,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 export interface Point {
   x: number;
@@ -178,6 +179,8 @@ function encodeStrokesToPngDataUrl(
 }
 
 export function SignaturePad({ disabled, onSaved, onCleared }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(baseStyles, ['canvasBox', 'segment', 'placeholderText']);
   const [strokes, setStrokes] = useState<Point[][]>([]);
   const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
   const [statusMsg, setStatusMsg] = useState('');
@@ -293,7 +296,7 @@ export function SignaturePad({ disabled, onSaved, onCleared }: Props) {
           onPress={handleClear}
           disabled={disabled}
         >
-          <MaterialIcons name="cleaning-services" size={16} color="#4A5568" />
+          <MaterialIcons name="cleaning-services" size={16} color={colors.textSecondary} />
           <Text style={styles.secondaryBtnText}>Limpar nova assinatura</Text>
         </TouchableOpacity>
 
@@ -312,7 +315,7 @@ export function SignaturePad({ disabled, onSaved, onCleared }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   wrapper: {
     marginVertical: 8,
   },
