@@ -23,7 +23,6 @@ interface Props {
   onOpenQuizDetail: () => void;
   onOpenBaixar: () => void;
   onOpenAttachments: () => void;
-  onOpenPhotos: () => void;
 }
 
 export function RdoDetailScreen({
@@ -33,7 +32,6 @@ export function RdoDetailScreen({
   onOpenQuizDetail,
   onOpenBaixar,
   onOpenAttachments,
-  onOpenPhotos,
 }: Props) {
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [attachments, setAttachments] = useState<RdoAttachment[]>([]);
@@ -339,17 +337,6 @@ export function RdoDetailScreen({
           <View style={styles.menuTextCol}>
             <Text style={styles.menuTitle}>Anexar Arquivos & Vídeo</Text>
             <Text style={styles.menuDesc}>{attachments.length} anexo(s) no servidor</Text>
-          </View>
-          <MaterialIcons name="chevron-right" size={22} color="#CBD5E0" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.menuItem} onPress={onOpenPhotos}>
-          <View style={[styles.menuIconCircle, { backgroundColor: '#FEFCBF' }]}>
-            <MaterialIcons name="photo-camera" size={22} color="#B7791F" />
-          </View>
-          <View style={styles.menuTextCol}>
-            <Text style={styles.menuTitle}>Fotos Antes / Depois</Text>
-            <Text style={styles.menuDesc}>Capturar e visualizar pares antes/depois</Text>
           </View>
           <MaterialIcons name="chevron-right" size={22} color="#CBD5E0" />
         </TouchableOpacity>

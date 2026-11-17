@@ -12,7 +12,6 @@ import { NativeRdoDetailScreen } from './src/screens/NativeRdoDetailScreen';
 import { CreateRdoScreen } from './src/screens/CreateRdoScreen';
 import { BaixarAtividadeScreen } from './src/screens/BaixarAtividadeScreen';
 import { AttachmentsScreen } from './src/screens/AttachmentsScreen';
-import { PhotosScreen } from './src/screens/PhotosScreen';
 
 type Screen =
   | 'login'
@@ -21,8 +20,7 @@ type Screen =
   | 'nativeRdoDetail'
   | 'createRdo'
   | 'baixarAtividade'
-  | 'attachments'
-  | 'photos';
+  | 'attachments';
 
 export default function App() {
   const [session, setSession] = useState<LoginSession | null>(null);
@@ -101,7 +99,6 @@ export default function App() {
             onOpenQuizDetail={() => setCurrentScreen('nativeRdoDetail')}
             onOpenBaixar={() => setCurrentScreen('baixarAtividade')}
             onOpenAttachments={() => setCurrentScreen('attachments')}
-            onOpenPhotos={() => setCurrentScreen('photos')}
           />
         )}
 
@@ -136,14 +133,6 @@ export default function App() {
 
         {currentScreen === 'attachments' && session && selectedRdo && (
           <AttachmentsScreen
-            session={session}
-            rdo={selectedRdo}
-            onBack={() => setCurrentScreen('rdoDetail')}
-          />
-        )}
-
-        {currentScreen === 'photos' && session && selectedRdo && (
-          <PhotosScreen
             session={session}
             rdo={selectedRdo}
             onBack={() => setCurrentScreen('rdoDetail')}
