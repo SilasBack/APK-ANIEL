@@ -41,7 +41,6 @@ import {
   QuestionDraftItem,
   isScannerOrSerialQuestion,
   resolveQuestionOptions,
-  getStandardOptionsForQuestion,
 } from '../services/detailWorkflow';
 import { EquipmentAuditPanel } from '../components/EquipmentAuditPanel';
 import { SignaturePad } from '../components/SignaturePad';
@@ -237,6 +236,16 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
 
   const templates = getArray(detailData, 'questionarios');
   const doneList = getArray(detailData, 'questionariosFeitos');
+  const pendingTemplates = templates.filter((quiz) => {
+    const qId = getText(quiz, 'id');
+    const qTitle = getText(quiz, 'titulo').trim().toUpperCase();
+    return !doneList.some((a) => {
+      const aQuizId = getText(a, 'idQuiz');
+      if (qId && aQuizId) return aQuizId === qId;
+      const aTitle = getText(a, 'titulo').trim().toUpperCase();
+      return qTitle.length > 0 && aTitle === qTitle;
+    });
+  });
   const activeDraft = editingQuizId ? draftsByQuizId[editingQuizId] || null : null;
 
   // Helpers for Saved Photos Continuous Numbering (Foto X de Y across all questions in a questionnaire)
@@ -1001,29 +1010,19 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
               );
             })}
 
-            {/* Templates Section: Questionários de atendimento */}
-            {!activeDraft && (
+            {/* Templates Section: only show questionnaires not yet answered on the server */}
+            {!activeDraft && pendingTemplates.length > 0 && (
               <>
-                <Text style={styles.sectionHeading}>Questionários de atendimento</Text>
-                {loaded && templates.length === 0 && (
-                  <Text style={styles.mutedText}>
-                    Nenhum modelo de questionário disponível foi retornado pelo servidor.
-                  </Text>
-                )}
-                {templates.map((quiz, tIdx) => {
+                <Text style={styles.sectionHeading}>Questionários pendentes</Text>
+                {pendingTemplates.map((quiz, tIdx) => {
                   const quizId = getText(quiz, 'id') || String(tIdx);
-                  const alreadyAnswered = doneList.some(
-                    (a) => getText(a, 'idQuiz') === getText(quiz, 'id')
-                  );
                   const hasLocalDraft = Boolean(draftsByQuizId[quizId]);
 
                   return (
                     <View key={quizId} style={styles.templateCard}>
                       <Text style={styles.templateTitle}>{getText(quiz, 'titulo')}</Text>
                       <Text style={styles.templateDesc}>
-                        {alreadyAnswered
-                          ? 'Este questionário já possui respostas no servidor; consulte-as acima. Um novo preenchimento cria outro registro.'
-                          : 'Questionário disponível para preenchimento neste RDO.'}
+                        Questionário disponível para preenchimento neste RDO.
                       </Text>
                       {!closed && (
                         <TouchableOpacity
