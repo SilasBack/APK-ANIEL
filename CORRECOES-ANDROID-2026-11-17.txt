@@ -93,3 +93,23 @@ tests/protocol-checks.cjs
 docs/INTEGRACAO-RDO-CAPTURAS-2026-11-17.md
 
 NAO COLOCAR SENHAS, TOKENS, CHAVES ADB OU CAPTURAS PRIVADAS NESTE ARQUIVO.
+
+
+6. NOVA CONFERENCIA COM EXPO GO ATIVO - 17/11/2026
+
+- Expo Go encontrado em execucao no celular USB autorizado.
+- Nao foram reconhecidos TypeError, ReferenceError, SyntaxError ou erros equivalentes no buffer de erros do processo no momento da leitura. Isso nao comprova todos os fluxos nem substitui a reproducao de uma falha.
+- TypeScript e testes de protocolo atuais passaram; os testes sao simulados e nao alteram RDOs.
+- Lint encontrou 1 erro: __dirname nao declarado no arquivo de testes CommonJS. Corrigido por declaracao do global real de Node, sem desativar a regra no aplicativo.
+- Existem 14 avisos de manutencao no codigo atual, principalmente relacionados a hooks/efeitos.
+- Arquivos de camera, video, tema e scanner tiveram alteracoes posteriores a primeira revisao; as correcoes anteriores nao devem ser sobrescritas por copias antigas.
+
+PONTOS AINDA ABERTOS NESTA CONFERENCIA:
+
+[PENDENTE - RISCO NAO REPRODUZIDO] src/services/fileUpload.ts: createFormDataFilePart carrega todos os bytes antecipadamente e os mantem em memoria. O multipart do Expo tambem materializa o corpo; videos proximos de 100 MB podem causar pico elevado de RAM. Medir em celular real antes de aumentar limites ou declarar suporte garantido a arquivos grandes. Nao substituir o adaptador multipart sem verificar o Expo 58, pois ele exige bytes() neste caminho.
+[PENDENTE - LIMITACAO CONFIRMADA NO CODIGO] As fotos do rascunho continuam referenciando URI do seletor, sem copia para armazenamento persistente do aplicativo. Limpeza do cache pode tornar essas imagens indisponiveis. Implementar copia para pasta persistente, com controle de espaco e limpeza apos envio.
+[PENDENTE] O estado unknown de um envio de questionario precisa de reconciliacao clara com o servidor; nao liberar POST repetido somente por reabrir a tela.
+[PENDENTE] O App.tsx ainda controla telas manualmente. Conferir o botao fisico/gesto Voltar; a adequacao a Expo Router prevista no AGENTS.md ainda nao foi realizada.
+[PENDENTE] Testar leitura de serial, permissao de camera, reproducao de video, foto e assinatura no aparelho. A leitura dos logs nao executou esses fluxos.
+
+Nenhuma criacao, exclusao, cancelamento ou baixa de RDO foi executada nesta nova conferencia.

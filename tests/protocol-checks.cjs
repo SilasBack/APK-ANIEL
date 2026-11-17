@@ -1,13 +1,17 @@
+/* global __dirname */
 const fs=require('node:fs');const path=require('node:path');const vm=require('node:vm');const assert=require('node:assert/strict');
 const root=process.env.ANIEL_ANDROID_ROOT||path.resolve(__dirname,'..');
 const ts=require(path.join(root,'node_modules/typescript'));
 const memory=new Map();const vault=new Map();
+const mockCacheFiles=[];
+class MockFile{constructor(uri,size=3){this.uri=uri;this.size=size;this.exists=true;}async bytes(){return new Uint8Array([1,2,3]);}delete(){const i=mockCacheFiles.indexOf(this);if(i>=0)mockCacheFiles.splice(i,1);this.exists=false;}}
+class MockDirectory{constructor(...parts){this.uri=parts.map(p=>typeof p==='string'?p:p.uri).join('/');this.exists=this.uri.includes('cache');}list(){return this.uri.includes('cache')?[...mockCacheFiles]:[];}delete(){}}
 const cache=new Map();const config={BASE_URL:'https://example.invalid/mobile/',API_VERSION:'v397/',TOUCH_TOKEN:'test-token',SECURITY_TOKEN:'test-security',COMPANY_CODE:'0000',APP_VERSION:'test'};
 function load(relative){const filename=path.resolve(root,relative);if(cache.has(filename))return cache.get(filename).exports;const module={exports:{}};cache.set(filename,module);const source=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const req=id=>{
  if(id.endsWith('/constants/config'))return {CONFIG:config};
- if(id==='@react-native-async-storage/async-storage')return {__esModule:true,default:{getItem:async k=>memory.get(k)??null,setItem:async(k,v)=>memory.set(k,v),removeItem:async k=>memory.delete(k)}};
+ if(id==='@react-native-async-storage/async-storage')return {__esModule:true,default:{getItem:async k=>memory.get(k)??null,setItem:async(k,v)=>memory.set(k,v),removeItem:async k=>memory.delete(k),getAllKeys:async()=>[...memory.keys()],multiGet:async ks=>ks.map(k=>[k,memory.get(k)??null]),multiRemove:async ks=>ks.forEach(k=>memory.delete(k))}};
  if(id==='expo-secure-store')return {getItemAsync:async k=>vault.get(k)??null,setItemAsync:async(k,v)=>vault.set(k,v),deleteItemAsync:async k=>vault.delete(k)};
- if(id==='expo-file-system')return {File:class MockFile{constructor(uri){this.uri=uri;}async bytes(){return new Uint8Array([1,2,3]);}}};
+ if(id==='expo-file-system')return {File:MockFile,Directory:MockDirectory,Paths:{cache:new MockDirectory('file:///cache'),document:new MockDirectory('file:///doc')}};
  if(id==='expo-file-system/legacy')return {readAsStringAsync:async()=>'AQID',EncodingType:{Base64:'base64'}};
  if(id==='react-native')return {Platform:{OS:'android',Version:36}};
  if(id.startsWith('.'))return load(path.relative(root,path.resolve(path.dirname(filename),id))+'.ts');
@@ -118,6 +122,24 @@ async function run(){
  assert.equal(updatedRdo.status, 'Atendendo');
  assert.equal(updatedRdo.raw.horaInicio, '10:00:00');
 
- console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais, edição de campos únicos, URLs/remoção de vídeo e status de atendimento. Nenhuma conexão real.');
+ // Storage cleanup & 1 GB limit check
+ const cleanup = load('src/services/storageCleanup.ts');
+ assert.equal(cleanup.STORAGE_ALERT_LIMIT_BYTES, 1024 * 1024 * 1024);
+ assert.equal(cleanup.formatBytes(1024 * 1024 * 1024), '1,00 GB');
+ memory.set('@aniel_active_session', JSON.stringify({ login: 'test-user' }));
+ memory.set('@aniel_detail_draft_test_1', JSON.stringify({ draftsByQuizId: { q1: { state: 'pending' } } }));
+ mockCacheFiles.push(new MockFile('file:///cache/big_video.mp4', 1024 * 1024 * 1024));
+ const beforeStats = await cleanup.inspectAppStorageAsync();
+ assert.equal(beforeStats.draftCount, 1);
+ assert.equal(beforeStats.mediaFileCount, 1);
+ assert.equal(beforeStats.exceedsLimit, true);
+ const cleanRes = await cleanup.cleanupAppStorageAsync();
+ assert.equal(cleanRes.removedDrafts, 1);
+ assert.equal(cleanRes.removedFiles, 1);
+ assert.equal(cleanRes.remaining.exceedsLimit, false);
+ assert.equal(cleanRes.remaining.totalBytes, 0);
+ assert.ok(memory.has('@aniel_active_session')); // Login/session preserved!
+
+ console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais, edição de campos únicos, URLs/remoção de vídeo, status de atendimento e auto-limpeza 1GB. Nenhuma conexão real.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});

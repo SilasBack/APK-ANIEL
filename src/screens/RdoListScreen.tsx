@@ -15,6 +15,14 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { getOpenRdosAsync, getClosedRdosAsync } from '../services/apiClient';
 import { LoginSession, RdoSummary } from '../types';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { StorageCleanupModal } from '../components/StorageCleanupModal';
+import {
+  cleanupAppStorageAsync,
+  formatBytes,
+  getAutoCleanupEnabledAsync,
+  inspectAppStorageAsync,
+  StorageStats,
+} from '../services/storageCleanup';
 
 interface Props {
   session: LoginSession;
@@ -30,6 +38,49 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
   const [loading, setLoading] = useState(false);
   const [rdos, setRdos] = useState<RdoSummary[]>([]);
   const [search, setSearch] = useState('');
+  const [cleanupVisible, setCleanupVisible] = useState(false);
+  const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
+  const notifiedLimitRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const [stats, autoEnabled] = await Promise.all([
+          inspectAppStorageAsync(),
+          getAutoCleanupEnabledAsync(),
+        ]);
+        if (!active) return;
+        setStorageStats(stats);
+        if (stats.exceedsLimit && !notifiedLimitRef.current) {
+          notifiedLimitRef.current = true;
+          if (autoEnabled) {
+            const res = await cleanupAppStorageAsync({ clearDrafts: true, clearMedia: true });
+            if (!active) return;
+            setStorageStats(res.remaining);
+            Alert.alert(
+              'Auto-limpeza concluída',
+              `O armazenamento do app atingiu ${formatBytes(stats.totalBytes)} (limite de 1 GB).\n\nForam liberados ${formatBytes(res.freedBytes)} em rascunhos e vídeos baixados.`
+            );
+          } else {
+            Alert.alert(
+              'Armazenamento cheio (≥ 1 GB)',
+              `Os rascunhos e vídeos baixados do app atingiram ${formatBytes(stats.totalBytes)}. Deseja fazer uma limpeza agora?`,
+              [
+                { text: 'Depois', style: 'cancel' },
+                { text: 'Limpar agora', onPress: () => setCleanupVisible(true) },
+              ]
+            );
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const requestRef=useRef(0);
   const fetchRdos=useCallback(async () => {
@@ -85,6 +136,21 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
         </View>
         <View style={styles.appBarActions}>
           <TouchableOpacity
+            style={[
+              styles.themeBtn,
+              storageStats?.exceedsLimit && styles.cleanupBtnAlert,
+            ]}
+            onPress={() => setCleanupVisible(true)}
+            accessibilityLabel="Auto-limpeza e armazenamento"
+          >
+            <MaterialIcons
+              name="cleaning-services"
+              size={21}
+              color={storageStats?.exceedsLimit ? colors.danger : colors.primarySoftText}
+            />
+            {storageStats?.exceedsLimit && <View style={styles.alertDot} />}
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.themeBtn}
             onPress={toggleTheme}
             accessibilityLabel={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
@@ -120,6 +186,22 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* 1 GB Storage Warning Banner */}
+      {storageStats?.exceedsLimit && (
+        <View style={styles.storageBanner}>
+          <MaterialIcons name="warning-amber" size={20} color={colors.danger} />
+          <Text style={styles.storageBannerText}>
+            Armazenamento em {formatBytes(storageStats.totalBytes)} (limite 1 GB). Limpe rascunhos e vídeos em cache.
+          </Text>
+          <TouchableOpacity
+            style={styles.storageBannerBtn}
+            onPress={() => setCleanupVisible(true)}
+          >
+            <Text style={styles.storageBannerBtnText}>Limpar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchBar}>
@@ -214,6 +296,12 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
         <MaterialIcons name="add" size={26} color="#FFF" />
         <Text style={styles.fabText}>Novo RDO</Text>
       </TouchableOpacity>
+
+      <StorageCleanupModal
+        visible={cleanupVisible}
+        onClose={() => setCleanupVisible(false)}
+        onStatsUpdated={(next) => setStorageStats(next)}
+      />
     </SafeAreaView>
   );
 }
@@ -228,6 +316,51 @@ const baseStyles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
     backgroundColor: '#E6F4F1',
+    position: 'relative',
+  },
+  cleanupBtnAlert: {
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FEB2B2',
+  },
+  alertDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E53E3E',
+  },
+  storageBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FEB2B2',
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  storageBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#C53030',
+  },
+  storageBannerBtn: {
+    backgroundColor: '#C53030',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  storageBannerBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   container: {
     flex: 1,
