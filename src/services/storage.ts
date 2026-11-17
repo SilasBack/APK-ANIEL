@@ -64,5 +64,5 @@ export async function hasPendingDetail(rdo: import('../types').RdoSummary,sessio
   const raw=await AsyncStorage.getItem(key);
   if (!raw) return false;
   try { const data=JSON.parse(raw); return Object.values(data.draftsByQuizId ?? {}).some((d: any) => d.state!=='sent'); }
-  catch { throw new Error('Não foi possível conferir os rascunhos locais. Resolva o detalhamento antes da baixa.'); }
+  catch { throw new Error('Não foi possível conferir os preenchimentos locais. Resolva o detalhamento antes da baixa.'); }
 }

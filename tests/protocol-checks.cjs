@@ -55,6 +55,32 @@ async function run(){
  const built=detail.buildNewDetailAnswer(rdo,actor,{id:'test-device'},{template:{id:1,titulo:'Test'},protocol:'Test',questions:[{question:{id:2,tipo:'Foto',obrigatoria:'S'},value:'',choices:[],images:[{id:'image1',uri:'file:///sample.jpg',mimeType:'image/jpeg'}]}],state:'pending'});
  assert.equal(built.uploadFiles[0].type,'image/jpeg');assert.equal(built.uploadFiles[0].name,'image1.jpg');assert.equal(built.answerPayload.respostas[0].multi[0].urlfoto,'image1.jpg');
  assert.throws(()=>detail.buildSavedSignatureAnswer(rdo,{respostas:[]},{id:99},'data:image/png;base64,abc',actor,{id:'test-device'}));
- console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload. Nenhuma conexão real.');
+
+ // Scanner and Single Choice verification
+ assert.ok(detail.isScannerOrSerialQuestion('Scanner do serial da controladora Instalada', 'CodBarra'));
+ assert.ok(detail.isScannerOrSerialQuestion('Scanner do serial dos switches instalados', 7));
+ assert.ok(detail.isScannerOrSerialQuestion('Scanner do serial dos APs instalados', 7));
+ assert.ok(detail.isScannerOrSerialQuestion('Scanner do serial do Nobreak instalado', 7));
+ assert.ok(!detail.isScannerOrSerialQuestion('Nome do cliente', 'Texto'));
+
+ assert.ok(detail.canEditSavedAnswer({ id: 101, tipoQuestao: 0 })); // Texto
+ assert.ok(detail.canEditSavedAnswer({ id: 102, tipoQuestao: 1 })); // Valor
+ assert.ok(detail.canEditSavedAnswer({ id: 103, tipoQuestao: 4 })); // UnicaEscolha
+ assert.ok(detail.canEditSavedAnswer({ id: 104, tipoQuestao: 7 })); // CodBarra
+ assert.ok(!detail.canEditSavedAnswer({ id: 105, tipoQuestao: 2 })); // Foto (fluxo separado)
+ assert.ok(!detail.canEditSavedAnswer({ tipoQuestao: 0 })); // Sem id não pode editar no servidor
+
+ const fabOptions = detail.getStandardOptionsForQuestion('Fabricante do Equipamento:');
+ assert.ok(fabOptions.length > 0 && fabOptions.some(o => o.resposta === 'UBIQUITI'));
+ const fornOptions = detail.getStandardOptionsForQuestion('Fornecedor Responsável');
+ assert.ok(fornOptions.length > 0 && fornOptions.some(o => o.resposta === 'BRISANET'));
+ const connOptions = detail.getStandardOptionsForQuestion('Tipo de Conectividade');
+ assert.ok(connOptions.length > 0 && connOptions.some(o => o.resposta === 'Fibra'));
+ const docOptions = detail.getStandardOptionsForQuestion('Tipo do documento');
+ assert.ok(docOptions.length > 0 && docOptions.some(o => o.resposta === 'CPF'));
+ const energyOptions = detail.getStandardOptionsForQuestion('Fonte de Energia');
+ assert.ok(energyOptions.length > 0 && energyOptions.some(o => o.resposta === 'COMERCIAL'));
+
+ console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais e edição de campos únicos. Nenhuma conexão real.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});

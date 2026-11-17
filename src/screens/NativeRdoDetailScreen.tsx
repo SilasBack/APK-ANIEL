@@ -19,7 +19,6 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { LoginSession, RdoSummary } from '../types';
 import { getClientDevice } from '../services/storage';
-import { isSerialQuestion } from '../services/equipmentAudit';
 import {
   getText,
   getArray,
@@ -40,10 +39,14 @@ import {
   photoFormat,
   DetailDraft,
   QuestionDraftItem,
+  isScannerOrSerialQuestion,
+  resolveQuestionOptions,
+  getStandardOptionsForQuestion,
 } from '../services/detailWorkflow';
 import { EquipmentAuditPanel } from '../components/EquipmentAuditPanel';
 import { SignaturePad } from '../components/SignaturePad';
 import { PhotoViewerModal } from '../components/PhotoViewerModal';
+import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 
 interface Props {
   session: LoginSession;
@@ -74,17 +77,24 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
   // Accordion states for saved questionnaires ("Respostas e fotos salvas / Abrir detalhamento")
   const [expandedSavedIds, setExpandedSavedIds] = useState<Record<string, boolean>>({});
 
-  // Draft editing state (for filling a template)
+  // Questionnaire editing state
   const [draftsByQuizId, setDraftsState] = useState<Record<string, DetailDraft>>({});
-  const draftsRef=useRef<Record<string,DetailDraft>>({});
-  const writeQueue=useRef<Promise<void>>(Promise.resolve());
-  const sendingRef=useRef(false);
-  const [namingQuiz,setNamingQuiz]=useState<any>(null);
-  const [questionnaireName,setQuestionnaireName]=useState('');
-  function setDraftsByQuizId(next: Record<string,DetailDraft>) { draftsRef.current=next; setDraftsState(next); }
+  const draftsRef = useRef<Record<string, DetailDraft>>({});
+  const writeQueue = useRef<Promise<void>>(Promise.resolve());
+  const sendingRef = useRef(false);
+  function setDraftsByQuizId(next: Record<string, DetailDraft>) { draftsRef.current = next; setDraftsState(next); }
   const [editingQuizId, setEditingQuizId] = useState<string | null>(null);
   const [viewServerWhileEditing, setViewServerWhileEditing] = useState(false);
   const [confirmSendNewModal, setConfirmSendNewModal] = useState(false);
+
+  // Barcode Scanner Modal state
+  const [scannerModal, setScannerModal] = useState<{
+    visible: boolean;
+    title: string;
+    target: 'draft' | 'saved';
+    qIdx?: number;
+  } | null>(null);
+  const [optionFilterText, setOptionFilterText] = useState('');
 
   // Saved Answer Editor Modal state
   const [answerEditModal, setAnswerEditModal] = useState<{
@@ -93,6 +103,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
     row: any;
     value: string;
     review: boolean;
+    selectedOptionId?: number | null;
   } | null>(null);
 
   // Saved Signature Editor Modal state
@@ -167,7 +178,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
       await pending;
       return true;
     } catch {
-      setError('Não foi possível salvar o rascunho neste celular. Seu preenchimento continua na tela.');
+      setError('Não foi possível salvar os dados neste celular. Seu preenchimento continua na tela.');
       return false;
     }
   }
@@ -214,7 +225,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
       if (editingQuizId) {
         setViewServerWhileEditing(true);
         setMessage(
-          'Dados do servidor atualizados. Seu rascunho foi preservado; use "Voltar ao meu rascunho" para continuar.'
+          'Dados do servidor atualizados. Seu preenchimento foi preservado; use "Voltar ao preenchimento" para continuar.'
         );
       } else {
         setMessage('Respostas, fotos e assinaturas atualizadas do servidor.');
@@ -305,24 +316,33 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
     });
   }
 
-  // Open or resume filling a template
-  async function handleOpenTemplate(quiz: any, name?: string) {
+  // Open questionnaire for filling
+  async function handleOpenTemplate(quiz: any) {
     const quizId = getText(quiz, 'id') || 'default';
     setViewServerWhileEditing(false);
     setError('');
     setMessage('');
 
-    if (!draftsRef.current[quizId] && name===undefined) { setNamingQuiz(quiz); setQuestionnaireName(''); return; }
     if (!draftsRef.current[quizId]) {
-      const questions = getArray(quiz, 'questoesDisponiveis').map((q) => ({
-        question: q,
-        value: '',
-        choices: [],
-        images: [],
-      }));
+      const rawQuestions =
+        getArray(quiz, 'questoesDisponiveis').length > 0
+          ? getArray(quiz, 'questoesDisponiveis')
+          : getArray(quiz, 'questoes');
+      const questions = [...rawQuestions]
+        .sort(
+          (a, b) =>
+            (parseInt(getText(a, 'ordem'), 10) || 0) -
+            (parseInt(getText(b, 'ordem'), 10) || 0)
+        )
+        .map((q) => ({
+          question: q,
+          value: '',
+          choices: [],
+          images: [],
+        }));
       const newDraft: DetailDraft = {
         template: quiz,
-        protocol: name?.trim() || `Quest ${new Date().toLocaleString('pt-BR')}`,
+        protocol: getText(quiz, 'titulo') || `Detalhamento-${rdo.number}`,
         questions,
         state: 'pending',
         savedAt: new Date().toLocaleTimeString('pt-BR'),
@@ -407,7 +427,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
       const loc = await Location.getCurrentPositionAsync({});
       const val = `${loc.coords.latitude}/${loc.coords.longitude}`;
       await updateActiveDraftQuestion(qIdx, (item) => ({ ...item, value: val }));
-      setMessage('Localização capturada e salva no rascunho.');
+      setMessage('Localização capturada com sucesso.');
     } catch (err: any) {
       setError(err?.message || 'Não foi possível obter a localização.');
     } finally {
@@ -468,7 +488,8 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
         session,
         answerEditModal.answer,
         answerEditModal.row,
-        answerEditModal.value
+        answerEditModal.value,
+        answerEditModal.selectedOptionId
       );
       setAnswerEditModal(null);
       setMessage('O servidor confirmou a alteração da resposta existente.');
@@ -602,16 +623,6 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
 
   return (
     <SafeAreaView style={styles.container}>
-      <Modal visible={Boolean(namingQuiz)} transparent animationType="fade" onRequestClose={() => setNamingQuiz(null)}>
-        <View style={{flex:1,backgroundColor:'#0008',justifyContent:'center',padding:24}}>
-          <View style={{backgroundColor:'#FFF',borderRadius:16,padding:20,gap:14}}>
-            <Text style={{fontSize:18,fontWeight:'700'}}>{getText(namingQuiz,'titulo')}</Text>
-            <TextInput accessibilityLabel="Nome do questionário" placeholder="Nome do questionário" value={questionnaireName} onChangeText={setQuestionnaireName} maxLength={50} style={{borderWidth:1,padding:12,borderRadius:8}} />
-            <TouchableOpacity onPress={() => { const quiz=namingQuiz; const name=questionnaireName.trim() || `Quest ${new Date().toLocaleString('pt-BR')}`; setNamingQuiz(null); void handleOpenTemplate(quiz,name); }}><Text style={{color:'#08776F',fontWeight:'700'}}>Responder</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => setNamingQuiz(null)}><Text>Cancelar</Text></TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
       {/* App Bar */}
       <View style={styles.appBar}>
         <TouchableOpacity
@@ -653,7 +664,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
         <View style={styles.refreshNoticeBox}>
           <MaterialIcons name="cloud-download" size={16} color="#08776F" />
           <Text style={styles.refreshNoticeText}>
-            Respostas, fotos e assinaturas atualizadas do servidor; o rascunho local é preservado.
+            Respostas, fotos e assinaturas sincronizadas com o servidor.
           </Text>
         </View>
 
@@ -689,32 +700,8 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
           </View>
         )}
 
-        {/* Draft State Switcher Banner */}
-        {activeDraft && (
-          <View style={styles.draftStateBanner}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.draftStateTitle}>Seu rascunho neste celular</Text>
-              <Text style={styles.draftStateSub}>
-                {activeDraft.savedAt
-                  ? `Gravado às ${activeDraft.savedAt}`
-                  : 'As alterações são salvas enquanto você preenche.'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.draftToggleBtn}
-              onPress={() => setViewServerWhileEditing(!viewServerWhileEditing)}
-            >
-              <Text style={styles.draftToggleBtnText}>
-                {viewServerWhileEditing
-                  ? 'Voltar ao meu rascunho'
-                  : 'Ver dados do servidor'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* Equipment Audit Panel */}
-        {!activeDraft || viewServerWhileEditing ? (
+        {!activeDraft ? (
           doneList.map((saved, sIdx) => (
             <EquipmentAuditPanel
               key={`audit-saved-${sIdx}`}
@@ -731,7 +718,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
         )}
 
         {/* VIEW 1: Saved Details on Server + Available Templates */}
-        {!activeDraft || viewServerWhileEditing ? (
+        {!activeDraft ? (
           <>
             {loaded && (
               <Text style={styles.loadedStatusText}>
@@ -881,7 +868,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                             <Text style={styles.questionTitle}>{getText(row, 'pergunta')}</Text>
                             <Text style={styles.answerValueText}>{detailAnswerText(row)}</Text>
 
-                            {/* Edit Saved Text / Value Answer */}
+                            {/* Edit Saved Answer */}
                             {canEditSavedAnswer(row) && rdo.status !== 'Cancelado' && (
                               <TouchableOpacity
                                 style={styles.secondaryActionBtn}
@@ -895,9 +882,23 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                                   })
                                 }
                               >
-                                <MaterialIcons name="edit" size={16} color="#2D3748" />
+                                <MaterialIcons
+                                  name={
+                                    isScannerOrSerialQuestion(getText(row, 'pergunta'), qType)
+                                      ? 'qr-code-scanner'
+                                      : qType === 'UnicaEscolha'
+                                      ? 'tune'
+                                      : 'edit'
+                                  }
+                                  size={16}
+                                  color="#2D3748"
+                                />
                                 <Text style={styles.secondaryActionBtnText}>
-                                  Editar resposta salva
+                                  {isScannerOrSerialQuestion(getText(row, 'pergunta'), qType)
+                                    ? 'Alterar seriais / Escanear…'
+                                    : qType === 'UnicaEscolha'
+                                    ? 'Alterar opção selecionada…'
+                                    : 'Editar resposta salva'}
                                 </Text>
                               </TouchableOpacity>
                             )}
@@ -1000,10 +1001,10 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
               );
             })}
 
-            {/* Templates Section: Preencher ou continuar um rascunho */}
+            {/* Templates Section: Questionários de atendimento */}
             {!activeDraft && (
               <>
-                <Text style={styles.sectionHeading}>Preencher ou continuar um rascunho</Text>
+                <Text style={styles.sectionHeading}>Questionários de atendimento</Text>
                 {loaded && templates.length === 0 && (
                   <Text style={styles.mutedText}>
                     Nenhum modelo de questionário disponível foi retornado pelo servidor.
@@ -1022,7 +1023,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                       <Text style={styles.templateDesc}>
                         {alreadyAnswered
                           ? 'Este questionário já possui respostas no servidor; consulte-as acima. Um novo preenchimento cria outro registro.'
-                          : 'Questionário disponível para este RDO.'}
+                          : 'Questionário disponível para preenchimento neste RDO.'}
                       </Text>
                       {!closed && (
                         <TouchableOpacity
@@ -1033,8 +1034,8 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                           <MaterialIcons name="edit-note" size={20} color="#FFF" />
                           <Text style={styles.primaryBtnText}>
                             {hasLocalDraft
-                              ? 'Continuar rascunho neste celular'
-                              : 'Preencher novo detalhamento'}
+                              ? 'Continuar preenchimento'
+                              : 'Preencher questionário'}
                           </Text>
                         </TouchableOpacity>
                       )}
@@ -1055,7 +1056,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
               const q = item.question;
               const type = questionType(q);
               const req = isRequiredQuestion(q);
-              const options = getArray(q, 'respostasPossiveis');
+              const options = resolveQuestionOptions(q, templates);
               const startPhotoNum = type === 'Foto' ? getDraftPhotoStart(qIdx) : 1;
 
               return (
@@ -1066,36 +1067,73 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
 
                   {type === 'UnicaEscolha' ? (
                     <View style={styles.choicesGroup}>
-                      {options.map((opt, oIdx) => {
-                        const optId = getText(opt, 'id');
-                        const selected = item.value === optId;
-                        return (
-                          <TouchableOpacity
-                            key={optId || String(oIdx)}
-                            style={[styles.choiceItem, selected && styles.choiceItemSelected]}
-                            onPress={() =>
-                              updateActiveDraftQuestion(qIdx, (prev) => ({
-                                ...prev,
-                                value: selected ? '' : optId,
-                              }))
-                            }
-                          >
-                            <MaterialIcons
-                              name={selected ? 'radio-button-checked' : 'radio-button-unchecked'}
-                              size={20}
-                              color={selected ? '#08776F' : '#A0AEC0'}
-                            />
-                            <Text
-                              style={[
-                                styles.choiceText,
-                                selected && styles.choiceTextSelected,
-                              ]}
+                      {options.length > 6 && (
+                        <TextInput
+                          style={styles.optionFilterInput}
+                          placeholder="Buscar opção…"
+                          placeholderTextColor="#A0AEC0"
+                          value={optionFilterText}
+                          onChangeText={setOptionFilterText}
+                        />
+                      )}
+                      {options
+                        .filter((opt) =>
+                          !optionFilterText.trim()
+                            ? true
+                            : getText(opt, 'resposta')
+                                .toLowerCase()
+                                .includes(optionFilterText.toLowerCase())
+                        )
+                        .map((opt, oIdx) => {
+                          const optId = getText(opt, 'id') || getText(opt, 'resposta');
+                          const optText = getText(opt, 'resposta');
+                          const selected =
+                            item.value === optId ||
+                            item.value.trim().toUpperCase() === optText.trim().toUpperCase();
+                          return (
+                            <TouchableOpacity
+                              key={optId || String(oIdx)}
+                              style={[styles.choiceItem, selected && styles.choiceItemSelected]}
+                              onPress={() =>
+                                updateActiveDraftQuestion(qIdx, (prev) => ({
+                                  ...prev,
+                                  value: selected ? '' : optText,
+                                }))
+                              }
                             >
-                              {getText(opt, 'resposta')}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
+                              <MaterialIcons
+                                name={selected ? 'radio-button-checked' : 'radio-button-unchecked'}
+                                size={20}
+                                color={selected ? '#08776F' : '#A0AEC0'}
+                              />
+                              <Text
+                                style={[
+                                  styles.choiceText,
+                                  selected && styles.choiceTextSelected,
+                                ]}
+                              >
+                                {optText}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      <TextInput
+                        style={[styles.singleInput, { marginTop: 8 }]}
+                        placeholder="Ou digite o valor personalizado"
+                        placeholderTextColor="#A0AEC0"
+                        value={
+                          options.some(
+                            (o) =>
+                              getText(o, 'resposta').trim().toUpperCase() ===
+                              item.value.trim().toUpperCase()
+                          )
+                            ? ''
+                            : item.value
+                        }
+                        onChangeText={(txt) =>
+                          updateActiveDraftQuestion(qIdx, (prev) => ({ ...prev, value: txt }))
+                        }
+                      />
                     </View>
                   ) : type === 'MultiplaEscolha' ? (
                     <View style={styles.choicesGroup}>
@@ -1156,7 +1194,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                             resizeMode="contain"
                           />
                           <Text style={styles.savedSignatureCaption}>
-                            Assinatura salva no rascunho.
+                            Assinatura capturada.
                           </Text>
                         </View>
                       )}
@@ -1184,7 +1222,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                       </View>
 
                       <Text style={styles.mutedText}>
-                        {item.images.length} foto(s) no rascunho desta pergunta.
+                        {item.images.length} foto(s) adicionada(s) nesta pergunta.
                       </Text>
 
                       <View style={styles.photoGrid}>
@@ -1234,20 +1272,54 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                         {item.value || 'Coordenada ainda não capturada'}
                       </Text>
                     </View>
-                  ) : type === 'CodBarra' || isSerialQuestion(getText(q, 'pergunta')) ? (
-                    <TextInput
-                      style={styles.multilineInput}
-                      multiline
-                      numberOfLines={4}
-                      placeholder="Um serial por linha ou separado por ponto e vírgula (;)"
-                      placeholderTextColor="#A0AEC0"
-                      value={item.value}
-                      onChangeText={(txt) =>
-                        updateActiveDraftQuestion(qIdx, (prev) => ({ ...prev, value: txt }))
-                      }
-                      textAlignVertical="top"
-                      autoCapitalize="characters"
-                    />
+                  ) : type === 'CodBarra' || isScannerOrSerialQuestion(getText(q, 'pergunta'), type) ? (
+                    <View style={styles.serialInputContainer}>
+                      <TouchableOpacity
+                        style={styles.barcodeScanBtn}
+                        onPress={() =>
+                          setScannerModal({
+                            visible: true,
+                            title: getText(q, 'pergunta'),
+                            target: 'draft',
+                            qIdx,
+                          })
+                        }
+                      >
+                        <MaterialIcons name="qr-code-scanner" size={20} color="#FFF" />
+                        <Text style={styles.barcodeScanBtnText}>
+                          Escanear código de barras com a câmera
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TextInput
+                        style={styles.multilineInput}
+                        multiline
+                        numberOfLines={4}
+                        placeholder="Digite os seriais ou use o scanner da câmera acima (um por linha ou com ;)"
+                        placeholderTextColor="#A0AEC0"
+                        value={item.value}
+                        onChangeText={(txt) =>
+                          updateActiveDraftQuestion(qIdx, (prev) => ({ ...prev, value: txt }))
+                        }
+                        textAlignVertical="top"
+                        autoCapitalize="characters"
+                      />
+
+                      {item.value.trim().length > 0 && (
+                        <View style={styles.serialHelperRow}>
+                          <Text style={styles.serialHelperCount}>
+                            {item.value.split(/[\r\n;]+/).filter(Boolean).length} serial(is) informado(s)
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() =>
+                              updateActiveDraftQuestion(qIdx, (prev) => ({ ...prev, value: '' }))
+                            }
+                          >
+                            <Text style={styles.serialClearText}>Limpar seriais</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
                   ) : (
                     <TextInput
                       style={styles.singleInput}
@@ -1365,6 +1437,129 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                 <View style={styles.comparisonBox}>
                   <Text style={styles.comparisonLabel}>Novo valor:</Text>
                   <Text style={styles.comparisonValue}>{answerEditModal.value}</Text>
+                </View>
+              ) : isScannerOrSerialQuestion(
+                  getText(answerEditModal.row, 'pergunta'),
+                  questionType(answerEditModal.row)
+                ) ? (
+                <View style={styles.serialInputContainer}>
+                  <TouchableOpacity
+                    style={styles.barcodeScanBtn}
+                    onPress={() =>
+                      setScannerModal({
+                        visible: true,
+                        title: getText(answerEditModal.row, 'pergunta'),
+                        target: 'saved',
+                      })
+                    }
+                  >
+                    <MaterialIcons name="qr-code-scanner" size={20} color="#FFF" />
+                    <Text style={styles.barcodeScanBtnText}>
+                      Escanear código de barras com a câmera
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TextInput
+                    style={styles.multilineInput}
+                    multiline
+                    numberOfLines={4}
+                    placeholder="Edite os seriais ou leia novos com a câmera acima"
+                    placeholderTextColor="#A0AEC0"
+                    value={answerEditModal.value}
+                    onChangeText={(txt) =>
+                      setAnswerEditModal((prev) => (prev ? { ...prev, value: txt } : null))
+                    }
+                    textAlignVertical="top"
+                    autoCapitalize="characters"
+                  />
+
+                  {answerEditModal.value.trim().length > 0 && (
+                    <View style={styles.serialHelperRow}>
+                      <Text style={styles.serialHelperCount}>
+                        {answerEditModal.value.split(/[\r\n;]+/).filter(Boolean).length} serial(is) informado(s)
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() =>
+                          setAnswerEditModal((prev) => (prev ? { ...prev, value: '' } : null))
+                        }
+                      >
+                        <Text style={styles.serialClearText}>Limpar seriais</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              ) : questionType(answerEditModal.row) === 'UnicaEscolha' ? (
+                <View style={styles.savedOptionChoices}>
+                  <Text style={styles.fieldLabel}>Selecione a opção desejada:</Text>
+                  {resolveQuestionOptions(answerEditModal.row, templates).length > 6 && (
+                    <TextInput
+                      style={styles.optionFilterInput}
+                      placeholder="Filtrar opções…"
+                      placeholderTextColor="#A0AEC0"
+                      value={optionFilterText}
+                      onChangeText={setOptionFilterText}
+                    />
+                  )}
+                  <ScrollView style={{ maxHeight: 200 }}>
+                    {resolveQuestionOptions(answerEditModal.row, templates)
+                      .filter((opt) =>
+                        !optionFilterText.trim()
+                          ? true
+                          : getText(opt, 'resposta')
+                              .toLowerCase()
+                              .includes(optionFilterText.toLowerCase())
+                      )
+                      .map((opt, oIdx) => {
+                        const optText = getText(opt, 'resposta');
+                        const optId = opt.id;
+                        const selected =
+                          answerEditModal.value.trim().toUpperCase() ===
+                          optText.trim().toUpperCase();
+                        return (
+                          <TouchableOpacity
+                            key={optId || String(oIdx)}
+                            style={[styles.choiceItem, selected && styles.choiceItemSelected]}
+                            onPress={() =>
+                              setAnswerEditModal((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      value: optText,
+                                      selectedOptionId: optId ?? null,
+                                    }
+                                  : null
+                              )
+                            }
+                          >
+                            <MaterialIcons
+                              name={selected ? 'radio-button-checked' : 'radio-button-unchecked'}
+                              size={20}
+                              color={selected ? '#08776F' : '#A0AEC0'}
+                            />
+                            <Text
+                              style={[
+                                styles.choiceText,
+                                selected && styles.choiceTextSelected,
+                              ]}
+                            >
+                              {optText}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </ScrollView>
+                  <Text style={[styles.fieldLabel, { marginTop: 10 }]}>
+                    Ou digite um valor personalizado:
+                  </Text>
+                  <TextInput
+                    style={styles.singleInput}
+                    placeholder="Digite o valor personalizado"
+                    placeholderTextColor="#A0AEC0"
+                    value={answerEditModal.value}
+                    onChangeText={(txt) =>
+                      setAnswerEditModal((prev) => (prev ? { ...prev, value: txt } : null))
+                    }
+                  />
                 </View>
               ) : (
                 <TextInput
@@ -1674,6 +1869,34 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
           });
         }}
         onClose={() => setViewerState((prev) => ({ ...prev, visible: false }))}
+      />
+
+      {/* MODAL 6: Camera Barcode Scanner */}
+      <BarcodeScannerModal
+        visible={Boolean(scannerModal?.visible)}
+        title={scannerModal?.title || 'Escanear código de barras / serial'}
+        onScanned={(serial) => {
+          if (!scannerModal) return;
+          if (scannerModal.target === 'draft' && scannerModal.qIdx !== undefined) {
+            const qIdx = scannerModal.qIdx;
+            updateActiveDraftQuestion(qIdx, (prev) => {
+              const current = prev.value.trim();
+              const nextVal = current.length > 0 ? `${current}\n${serial}` : serial;
+              return { ...prev, value: nextVal };
+            });
+            setMessage(`Serial ${serial} injetado no detalhamento.`);
+          } else if (scannerModal.target === 'saved') {
+            setAnswerEditModal((prev) => {
+              if (!prev) return null;
+              const current = prev.value.trim();
+              const nextVal = current.length > 0 ? `${current}\n${serial}` : serial;
+              return { ...prev, value: nextVal };
+            });
+            setMessage(`Serial ${serial} adicionado para alteração.`);
+          }
+          setScannerModal(null);
+        }}
+        onClose={() => setScannerModal(null)}
       />
     </SafeAreaView>
   );
@@ -2226,5 +2449,60 @@ const styles = StyleSheet.create({
   },
   btnDisabled: {
     opacity: 0.5,
+  },
+  serialInputContainer: {
+    gap: 8,
+  },
+  barcodeScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#08776F',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    gap: 8,
+    marginBottom: 4,
+  },
+  barcodeScanBtnText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  serialHelperRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  serialHelperCount: {
+    fontSize: 12,
+    color: '#08776F',
+    fontWeight: '600',
+  },
+  serialClearText: {
+    fontSize: 12,
+    color: '#E53E3E',
+    fontWeight: '600',
+  },
+  optionFilterInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5E0',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 13,
+    color: '#2D3748',
+    marginBottom: 6,
+    backgroundColor: '#F7FAFC',
+  },
+  savedOptionChoices: {
+    marginVertical: 6,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4A5568',
+    marginBottom: 6,
   },
 });

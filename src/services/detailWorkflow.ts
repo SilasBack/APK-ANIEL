@@ -2,6 +2,7 @@ import { CONFIG } from '../constants/config';
 import { ClientDevice, LoginSession, RdoSummary } from '../types';
 import { ApiError, buildVersionedUri, sendAuthenticatedAsync, handleResponse } from './apiClient';
 import { createFormDataFilePart, UploadFileItem } from './fileUpload';
+import { isSerialQuestion, normalizeText } from './equipmentAudit';
 
 const QUESTION_TYPES = [
   'Texto',
@@ -50,7 +51,10 @@ export function getArray(obj: any, key: string): any[] {
 }
 
 export function questionType(question: any): string {
-  const raw = getText(question, 'tipo');
+  const raw =
+    getText(question, 'tipo') ||
+    getText(question, 'tipoQuestao') ||
+    getText(question, 'tipoPergunta');
   const num = parseInt(raw, 10);
   if (!!Number.isFinite(num) && num >= 0 && num < QUESTION_TYPES.length && String(num) === raw.trim()) {
     return QUESTION_TYPES[num];
@@ -73,6 +77,91 @@ export function isRequiredQuestion(question: any): boolean {
 export function isSignatureQuestion(row: any): boolean {
   const t = questionType(row);
   return t === 'Assinatura' || t === 'AssinaturaCliente';
+}
+
+export function isScannerOrSerialQuestion(questionName: string, qType?: string): boolean {
+  if (qType === 'CodBarra') return true;
+  const norm = normalizeText(questionName || '');
+  return (
+    norm.includes('SCANNER') ||
+    norm.includes('SERIAL') ||
+    isSerialQuestion(questionName)
+  );
+}
+
+export function getStandardOptionsForQuestion(questionName: string): { id?: number; resposta: string }[] {
+  const norm = normalizeText(questionName);
+  if (norm.includes('FABRICANTE')) {
+    return [
+      { id: 7883, resposta: 'UBIQUITI' },
+      { id: 7884, resposta: 'TP-LINK' },
+      { id: 7885, resposta: 'INTELBRAS' },
+      { resposta: 'HUAWEI' },
+      { resposta: 'CISCO' },
+      { resposta: 'MIKROTIK' },
+    ];
+  }
+  if (norm.includes('FORNECEDOR')) {
+    return [
+      { id: 6999, resposta: 'BRISANET' },
+      { id: 7000, resposta: 'NUH DIGITAL' },
+      { id: 7001, resposta: 'FIXTELL' },
+      { id: 7002, resposta: 'LOTUS ICT' },
+      { id: 7003, resposta: 'Q13' },
+      { id: 7004, resposta: 'STEIN' },
+      { id: 7005, resposta: 'TECNO IT' },
+      { id: 7006, resposta: 'VIASAT' },
+      { id: 7007, resposta: 'XP TELECOM' },
+      { id: 7113, resposta: 'MAMINFO' },
+      { id: 7851, resposta: 'ARAUJO E ALMEIDA' },
+      { id: 7852, resposta: 'NMA SERVIÇOS' },
+      { id: 7853, resposta: 'MEGA INFRA' },
+      { id: 8375, resposta: 'HUGHES' },
+    ];
+  }
+  if (norm.includes('CONECTIVIDADE')) {
+    return [
+      { id: 7008, resposta: 'Fibra' },
+      { id: 7010, resposta: 'Fwa' },
+      { id: 7011, resposta: 'Híbrida' },
+      { id: 7012, resposta: 'Rádio' },
+      { resposta: 'Satélite' },
+    ];
+  }
+  if (norm.includes('DOCUMENTO')) {
+    return [
+      { id: 6993, resposta: 'CPF' },
+      { id: 6994, resposta: 'RG' },
+    ];
+  }
+  if (norm.includes('ENERGIA')) {
+    return [
+      { id: 7013, resposta: 'COMERCIAL' },
+      { id: 7014, resposta: 'FOSSIL' },
+      { id: 7015, resposta: 'SOLAR' },
+    ];
+  }
+  return [];
+}
+
+export function resolveQuestionOptions(question: any, templates: any[] = []): { id?: number; resposta: string }[] {
+  const direct = getArray(question, 'respostasPossiveis');
+  if (direct.length > 0) return direct;
+  const opcoes = getArray(question, 'opcoesResposta');
+  if (opcoes.length > 0) return opcoes;
+  
+  const qId = getText(question, 'idQuestion') || getText(question, 'id');
+  const qName = getText(question, 'pergunta');
+  for (const t of templates) {
+    for (const q of getArray(t, 'questoes')) {
+      if ((qId && getText(q, 'id') === qId) || (qName && getText(q, 'pergunta') === qName)) {
+        const found = getArray(q, 'respostasPossiveis');
+        if (found.length > 0) return found;
+      }
+    }
+  }
+
+  return getStandardOptionsForQuestion(qName);
 }
 
 export function detailAnswerText(row: any): string {
@@ -205,7 +294,11 @@ export async function fetchRdoDetailFullAsync(
 export function canEditSavedAnswer(row: any): boolean {
   const t = questionType(row);
   const id = parseInt(getText(row, 'id'), 10);
-  return (t === 'Texto' || t === 'Valor') && !isNaN(id) && id > 0;
+  return (
+    (t === 'Texto' || t === 'Valor' || t === 'CodBarra' || t === 'UnicaEscolha') &&
+    !isNaN(id) &&
+    id > 0
+  );
 }
 
 function getReportEndpointUri(action: 'CompararSenha' | 'AtualizarResposta'): string {
@@ -251,7 +344,8 @@ export async function updateSavedAnswerOnServerAsync(
   session: LoginSession,
   questionnaire: any,
   row: any,
-  newValue: string
+  newValue: string,
+  selectedOptionId?: number | null
 ): Promise<void> {
   if (!canEditSavedAnswer(row)) {
     throw new Error('Esta resposta não está disponível para edição.');
@@ -283,13 +377,27 @@ export async function updateSavedAnswerOnServerAsync(
   }
 
   // 2. Build form-urlencoded payload
+  const tipoCodigo =
+    t === 'Texto'
+      ? '0'
+      : t === 'Valor'
+      ? '1'
+      : t === 'UnicaEscolha'
+      ? '4'
+      : t === 'CodBarra'
+      ? '7'
+      : '0';
+
   const fields: { key: string; value: string }[] = [
     { key: 'IdQuizAnswerItem', value: getText(row, 'id') },
-    { key: 'TipoQuestao', value: t === 'Texto' ? '0' : '1' },
+    { key: 'TipoQuestao', value: tipoCodigo },
     { key: 'Resposta', value: newValue },
     { key: 'ValorAnterior', value: getText(row, 'resposta') },
     { key: 'Usuario', value: session.login },
   ];
+  if (selectedOptionId !== undefined && selectedOptionId !== null) {
+    fields.push({ key: 'IdQuestionAnswer', value: String(selectedOptionId) });
+  }
   flattenForJQueryAjax('Questionario', questionnaire, fields);
 
   const formBody = fields
@@ -470,15 +578,21 @@ export function buildNewDetailAnswer(
     let response: string | null = null;
     let selected: number | null = null;
     const multi: any[] = [];
-    const choices = getArray(q, 'respostasPossiveis');
+    const choices = resolveQuestionOptions(q, [draft.template]);
 
     if (type === 'UnicaEscolha' && item.value.length > 0) {
-      const option = choices.find((o) => getText(o, 'id') === item.value);
-      if (!option) {
-        throw new Error(`Opção inválida em ${getText(q, 'pergunta')}`);
+      const option = choices.find(
+        (o) =>
+          getText(o, 'id') === item.value ||
+          getText(o, 'resposta').trim().toUpperCase() === item.value.trim().toUpperCase()
+      );
+      if (option) {
+        const parsedId = parseInt(getText(option, 'id'), 10);
+        selected = !isNaN(parsedId) && parsedId > 0 ? parsedId : null;
+        response = getText(option, 'resposta');
+      } else {
+        response = item.value;
       }
-      selected = parseInt(item.value, 10);
-      response = getText(option, 'resposta');
     } else if (type === 'MultiplaEscolha') {
       for (const id of item.choices) {
         const option = choices.find((o) => getText(o, 'id') === id);

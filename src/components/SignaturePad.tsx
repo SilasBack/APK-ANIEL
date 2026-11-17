@@ -235,7 +235,7 @@ export function SignaturePad({ disabled, onSaved, onCleared }: Props) {
     }
     const pngDataUrl = encodeStrokesToPngDataUrl(allStrokes, boxSize.width, boxSize.height);
     onSaved(pngDataUrl);
-    setStatusMsg('Assinatura guardada no rascunho.');
+    setStatusMsg('Assinatura salva.');
   }
 
   const allStrokesToRender = currentStroke.length > 0 ? [...strokes, currentStroke] : strokes;
