@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { LoginSession, RdoSummary, Encerramento } from '../types';
 import { getRdoEndingsAsync, baixarRdoAsync, isEndingHidden } from '../services/apiClient';
 import { parseServerDate } from '../services/rdoProtocol';
@@ -59,13 +58,6 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
   const [endTimeText, setEndTimeText] = useState<string>(toHHMM(initialEnd));
   const [observation, setObservation] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [loadingGps, setLoadingGps] = useState(false);
-  const [locationStatus, setLocationStatus] = useState<string>('Obtendo GPS...');
-  const [currentCoords, setCurrentCoords] = useState<{
-    latitude: number;
-    longitude: number;
-    altitude: number;
-  }>({ latitude: NaN, longitude: NaN, altitude: 0 });
 
   async function loadData() {
     setLoadingEndings(true);
@@ -82,47 +74,8 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
     }
   }
 
-  async function requestLocation() {
-    setLoadingGps(true);
-    setLocationStatus('Obtendo GPS...');
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocationStatus('Permissão de GPS negada (usará coordenadas do RDO)');
-        return;
-      }
-      const last = await Location.getLastKnownPositionAsync({});
-      if (last) {
-        setCurrentCoords({
-          latitude: last.coords.latitude,
-          longitude: last.coords.longitude,
-          altitude: last.coords.altitude || 0,
-        });
-        setLocationStatus(
-          `GPS: ${last.coords.latitude.toFixed(5)}, ${last.coords.longitude.toFixed(5)}`
-        );
-      }
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      setCurrentCoords({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        altitude: loc.coords.altitude || 0,
-      });
-      setLocationStatus(`GPS: ${loc.coords.latitude.toFixed(5)}, ${loc.coords.longitude.toFixed(5)}`);
-    } catch {
-      setLocationStatus((prev) =>
-        prev.startsWith('GPS:') ? prev : 'GPS indisponível no momento (usará coordenadas do RDO)'
-      );
-    } finally {
-      setLoadingGps(false);
-    }
-  }
-
   useEffect(() => {
     void loadData();
-    void requestLocation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -167,9 +120,6 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
       const success = await baixarRdoAsync(session, rdo, {
         encerramento: selectedEnding,
         observacao: observation.trim(),
-        latitude: Number.isFinite(currentCoords.latitude) ? currentCoords.latitude : undefined,
-        longitude: Number.isFinite(currentCoords.longitude) ? currentCoords.longitude : undefined,
-        altitude: currentCoords.altitude,
         startDate,
         endDate,
       });
@@ -224,21 +174,6 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Técnico Responsável:</Text>
               <Text style={styles.summaryValue}>{session.name}</Text>
-            </View>
-            <View style={styles.gpsRow}>
-              <MaterialIcons name="my-location" size={16} color={colors.primarySoftText} />
-              <Text style={styles.gpsText}>{locationStatus}</Text>
-              <TouchableOpacity
-                onPress={requestLocation}
-                disabled={loadingGps || submitting}
-                style={styles.gpsRetryBtn}
-              >
-                {loadingGps ? (
-                  <ActivityIndicator size="small" color={colors.primarySoftText} />
-                ) : (
-                  <MaterialIcons name="refresh" size={16} color={colors.primarySoftText} />
-                )}
-              </TouchableOpacity>
             </View>
           </View>
 
@@ -423,24 +358,6 @@ const baseStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#1A202C',
-  },
-  gpsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
-    backgroundColor: '#E6F4F1',
-    padding: 8,
-    borderRadius: 8,
-  },
-  gpsText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#08776F',
-    fontWeight: '500',
-    marginLeft: 6,
-  },
-  gpsRetryBtn: {
-    padding: 4,
   },
   timeRow: {
     flexDirection: 'row',
