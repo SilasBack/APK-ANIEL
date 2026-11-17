@@ -15,6 +15,9 @@ import * as Location from 'expo-location';
 import { LoginSession, RdoSummary, RdoAttachment } from '../types';
 import { getRdoAttachmentsAsync, sendAuthenticatedAsync, isVideoAttachment } from '../services/apiClient';
 import { getClientDevice } from '../services/storage';
+import { detailImageSource } from '../services/detailWorkflow';
+import { CONFIG } from '../constants/config';
+import { VideoPlayerModal } from '../components/VideoPlayerModal';
 
 interface Props {
   session: LoginSession;
@@ -38,6 +41,19 @@ export function RdoDetailScreen({
   const [hasServerVideo, setHasServerVideo] = useState<boolean | null>(null);
   const [currentStatus, setCurrentStatus] = useState(rdo.status);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [activeVideo, setActiveVideo] = useState<{
+    url: string;
+    title: string;
+    subtitle?: string;
+  } | null>(null);
+
+  const serverVideo = attachments.find(isVideoAttachment) || null;
+  const serverVideoUrl = serverVideo
+    ? detailImageSource(
+        String(serverVideo.caminho || serverVideo.url || serverVideo.caminhoArquivo || ''),
+        CONFIG.BASE_URL
+      )
+    : null;
 
   const isClosed =
     currentStatus === 'FechadaProdutiva' || currentStatus === 'FechadaImprodutiva';
@@ -282,6 +298,21 @@ export function RdoDetailScreen({
                 : 'É obrigatório possuir vídeo anexado e enviado ao servidor para dar baixa na atividade.'}
             </Text>
           </View>
+          {hasServerVideo && serverVideo && serverVideoUrl && (
+            <TouchableOpacity
+              style={styles.watchVideoBtn}
+              onPress={() =>
+                setActiveVideo({
+                  url: serverVideoUrl,
+                  title: serverVideo.nomeDocumento || 'Vídeo da obra',
+                  subtitle: serverVideo.tamanho || undefined,
+                })
+              }
+            >
+              <MaterialIcons name="play-arrow" size={18} color="#FFF" />
+              <Text style={styles.watchVideoBtnText}>Assistir</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Action Button: Baixar Atividade */}
@@ -341,6 +372,14 @@ export function RdoDetailScreen({
           <MaterialIcons name="chevron-right" size={22} color="#CBD5E0" />
         </TouchableOpacity>
       </ScrollView>
+
+      <VideoPlayerModal
+        visible={Boolean(activeVideo)}
+        url={activeVideo?.url || null}
+        title={activeVideo?.title}
+        subtitle={activeVideo?.subtitle}
+        onClose={() => setActiveVideo(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -521,6 +560,21 @@ const styles = StyleSheet.create({
   noticeDesc: {
     fontSize: 12,
     marginTop: 2,
+  },
+  watchVideoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#2F855A',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  watchVideoBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   primaryActionBtn: {
     backgroundColor: '#1A202C',

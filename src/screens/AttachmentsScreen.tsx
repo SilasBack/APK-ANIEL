@@ -12,9 +12,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { LoginSession, RdoSummary, RdoAttachment } from '../types';
-import { getRdoAttachmentsAsync, handleResponse } from '../services/apiClient';
+import { getRdoAttachmentsAsync, handleResponse, isVideoAttachment } from '../services/apiClient';
 import { CONFIG } from '../constants/config';
 import { createFormDataFilePart } from '../services/fileUpload';
+import { detailImageSource } from '../services/detailWorkflow';
+import { VideoPlayerModal } from '../components/VideoPlayerModal';
+import { PhotoViewerModal } from '../components/PhotoViewerModal';
 
 interface Props {
   session: LoginSession;
@@ -22,10 +25,26 @@ interface Props {
   onBack: () => void;
 }
 
+function isImageAttachment(file: RdoAttachment): boolean {
+  const value = String(file.extensao || file.nomeDocumento || '')
+    .toLowerCase()
+    .replace(/^\./, '');
+  return /^(jpg|jpeg|png|webp|gif|bmp)$/.test(value) || /\.(jpg|jpeg|png|webp|gif|bmp)$/.test(value);
+}
+
 export function AttachmentsScreen({ session, rdo, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [attachments, setAttachments] = useState<RdoAttachment[]>([]);
+  const [activeVideo, setActiveVideo] = useState<{
+    url: string;
+    title: string;
+    subtitle?: string;
+  } | null>(null);
+  const [activeImage, setActiveImage] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
 
   useEffect(() => {
     loadAttachments();
@@ -190,43 +209,94 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
             </View>
           }
           renderItem={({ item }) => {
-            const isVideo =
-              (item.extensao || '').toLowerCase() === 'mp4' ||
-              (item.nomeDocumento || '').toLowerCase().endsWith('.mp4');
+            const isVideo = isVideoAttachment(item);
+            const isImage = !isVideo && isImageAttachment(item);
+            const mediaUrl = detailImageSource(
+              String(item.caminho || item.url || item.caminhoArquivo || ''),
+              CONFIG.BASE_URL
+            );
+
+            function handleOpenItem() {
+              if (isVideo) {
+                if (!mediaUrl) {
+                  Alert.alert(
+                    'Vídeo indisponível',
+                    'O servidor não retornou um endereço válido para reproduzir este vídeo.'
+                  );
+                  return;
+                }
+                setActiveVideo({
+                  url: mediaUrl,
+                  title: item.nomeDocumento || 'Vídeo da obra',
+                  subtitle: item.tamanho || undefined,
+                });
+              } else if (isImage && mediaUrl) {
+                setActiveImage({
+                  url: mediaUrl,
+                  title: item.nomeDocumento || 'Foto anexada',
+                });
+              }
+            }
+
+            const canPreview = (isVideo && Boolean(mediaUrl)) || (isImage && Boolean(mediaUrl));
 
             return (
-              <View style={styles.itemCard}>
+              <TouchableOpacity
+                style={styles.itemCard}
+                activeOpacity={canPreview ? 0.75 : 1}
+                onPress={canPreview || isVideo ? handleOpenItem : undefined}
+              >
                 <View
                   style={[
                     styles.itemIconCircle,
-                    { backgroundColor: isVideo ? '#FEFCBF' : '#EBF8FF' },
+                    { backgroundColor: isVideo ? '#E6F4F1' : isImage ? '#EBF8FF' : '#EDF2F7' },
                   ]}
                 >
                   <MaterialIcons
-                    name={isVideo ? 'videocam' : 'insert-drive-file'}
-                    size={24}
-                    color={isVideo ? '#B7791F' : '#2B6CB0'}
+                    name={isVideo ? 'play-circle-filled' : isImage ? 'image' : 'insert-drive-file'}
+                    size={26}
+                    color={isVideo ? '#08776F' : isImage ? '#2B6CB0' : '#4A5568'}
                   />
                 </View>
                 <View style={styles.itemTextCol}>
                   <Text style={styles.itemTitle} numberOfLines={1}>
-                    {item.nomeDocumento}
+                    {item.nomeDocumento || 'Arquivo anexado'}
                   </Text>
                   <Text style={styles.itemSize}>
-                    {isVideo ? 'Vídeo da Obra • ' : 'Documento • '}
+                    {isVideo ? 'Vídeo no servidor • ' : isImage ? 'Foto • ' : 'Documento • '}
                     {item.tamanho || 'Tamanho desconhecido'}
                   </Text>
                 </View>
-                {isVideo && (
-                  <View style={styles.videoBadge}>
-                    <Text style={styles.videoBadgeText}>Vídeo Válido</Text>
+                {isVideo ? (
+                  <View style={styles.playBtnPill}>
+                    <MaterialIcons name="play-arrow" size={16} color="#FFF" />
+                    <Text style={styles.playBtnPillText}>Assistir</Text>
                   </View>
-                )}
-              </View>
+                ) : isImage && mediaUrl ? (
+                  <View style={styles.viewBtnPill}>
+                    <Text style={styles.viewBtnPillText}>Ver</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
             );
           }}
         />
       )}
+
+      <VideoPlayerModal
+        visible={Boolean(activeVideo)}
+        url={activeVideo?.url || null}
+        title={activeVideo?.title}
+        subtitle={activeVideo?.subtitle}
+        onClose={() => setActiveVideo(null)}
+      />
+
+      <PhotoViewerModal
+        visible={Boolean(activeImage)}
+        source={activeImage?.url || null}
+        title={activeImage?.title || 'Anexo'}
+        onClose={() => setActiveImage(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -313,16 +383,30 @@ const styles = StyleSheet.create({
     color: '#A0AEC0',
     marginTop: 2,
   },
-  videoBadge: {
-    backgroundColor: '#C6F6D5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+  playBtnPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#08776F',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
-  videoBadgeText: {
-    fontSize: 11,
+  playBtnPillText: {
+    fontSize: 12,
     fontWeight: '700',
-    color: '#22543D',
+    color: '#FFF',
+  },
+  viewBtnPill: {
+    backgroundColor: '#EBF8FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  viewBtnPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2B6CB0',
   },
   centerBox: {
     flex: 1,

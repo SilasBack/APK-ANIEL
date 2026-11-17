@@ -81,6 +81,13 @@ async function run(){
  const energyOptions = detail.getStandardOptionsForQuestion('Fonte de Energia');
  assert.ok(energyOptions.length > 0 && energyOptions.some(o => o.resposta === 'COMERCIAL'));
 
- console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais e edição de campos únicos. Nenhuma conexão real.');
+ // Attachment/Video URL resolution
+ assert.equal(detail.detailImageSource('https://example.invalid/files/v.mp4', 'https://example.invalid/mobile/'), 'https://example.invalid/files/v.mp4');
+ assert.equal(detail.detailImageSource('http://example.invalid/files/v.mp4', 'https://example.invalid/mobile/'), 'https://example.invalid/files/v.mp4');
+ assert.equal(detail.detailImageSource('/Anexos/v.mp4', 'https://example.invalid/mobile/'), 'https://example.invalid/Anexos/v.mp4');
+ assert.equal(detail.detailImageSource('Anexos/v.mp4', 'https://example.invalid/mobile/'), 'https://example.invalid/mobile/Anexos/v.mp4');
+ assert.equal(detail.detailImageSource('https://user:pass@example.invalid/v.mp4', 'https://example.invalid/mobile/'), null);
+
+ console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload; scanner de seriais, edição de campos únicos e URLs de vídeo. Nenhuma conexão real.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});

@@ -185,13 +185,16 @@ export function detailImageSource(value: string, baseUrl: string = CONFIG.BASE_U
   if (!value || !value.trim() || value.length > 2048) return null;
   const trimmed = value.trim();
   try {
-    if (trimmed.startsWith('https://')) return trimmed;
-    if (trimmed.startsWith('http://')) {
-      return trimmed.replace(/^http:\/\//i, 'https://');
+    const baseWithSlash = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    const resolved = new URL(trimmed, baseWithSlash);
+    if (resolved.username || resolved.password) return null;
+    if (resolved.protocol === 'https:') return resolved.toString();
+    if (resolved.protocol === 'http:') {
+      resolved.protocol = 'https:';
+      resolved.port = '';
+      return resolved.toString();
     }
-    const base = baseUrl.replace(/\/+$/, '');
-    const rel = trimmed.replace(/^\/+/, '');
-    return `${base}/${rel}`;
+    return null;
   } catch {
     return null;
   }

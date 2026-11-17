@@ -43,7 +43,8 @@
           "photosPermission": "O Aniel Next precisa de acesso às suas fotos para anexar evidências à obra.",
           "cameraPermission": "O Aniel Next precisa da câmera para tirar fotos de antes e depois da obra."
         }
-      ]
+      ],
+      "expo-video"
     ]
   }
 }
