@@ -64,9 +64,33 @@ function getManagedDirectories(): Directory[] {
   return dirs;
 }
 
+function isSafeCacheFileToManage(uri: string, insideMediaDir: boolean): boolean {
+  const lower = uri.toLowerCase();
+  // Never touch Expo Go / Metro runtime bundles or manifests
+  if (/\.(js|hbc|bundle|map|dex|odex|vdex|so)$/.test(lower)) return false;
+  if (insideMediaDir) return true;
+  return /\.(mp4|mov|m4v|mkv|webm|avi|3gp|jpg|jpeg|png|webp|gif|heic|tmp|part|exo|cache)$/.test(
+    lower
+  );
+}
+
+function isMediaSubdirectory(uri: string): boolean {
+  const lower = uri.toLowerCase();
+  return (
+    lower.includes('imagepicker') ||
+    lower.includes('videocache') ||
+    lower.includes('aniel_videos') ||
+    lower.includes('camera') ||
+    lower.includes('exoplayer') ||
+    lower.includes('/exo') ||
+    lower.includes('media')
+  );
+}
+
 function scanDirectoryRecursive(
   dir: Directory,
-  depth = 0
+  depth = 0,
+  insideMediaDir = false
 ): { count: number; bytes: number } {
   if (depth > 6) return { count: 0, bytes: 0 };
   let count = 0;
@@ -76,10 +100,15 @@ function scanDirectoryRecursive(
     const entries = dir.list();
     for (const entry of entries) {
       if (entry instanceof Directory) {
-        const sub = scanDirectoryRecursive(entry, depth + 1);
+        const sub = scanDirectoryRecursive(
+          entry,
+          depth + 1,
+          insideMediaDir || isMediaSubdirectory(entry.uri)
+        );
         count += sub.count;
         bytes += sub.bytes;
       } else if (entry instanceof File) {
+        if (!isSafeCacheFileToManage(entry.uri, insideMediaDir)) continue;
         count += 1;
         const size = typeof entry.size === 'number' && entry.size > 0 ? entry.size : 0;
         bytes += size;
@@ -93,7 +122,8 @@ function scanDirectoryRecursive(
 
 function clearDirectoryContents(
   dir: Directory,
-  depth = 0
+  depth = 0,
+  insideMediaDir = false
 ): { removedFiles: number; freedBytes: number } {
   if (depth > 6) return { removedFiles: 0, freedBytes: 0 };
   let removedFiles = 0;
@@ -103,17 +133,21 @@ function clearDirectoryContents(
     const entries = dir.list();
     for (const entry of entries) {
       if (entry instanceof Directory) {
-        const sub = clearDirectoryContents(entry, depth + 1);
+        const subIsMedia = insideMediaDir || isMediaSubdirectory(entry.uri);
+        const sub = clearDirectoryContents(entry, depth + 1, subIsMedia);
         removedFiles += sub.removedFiles;
         freedBytes += sub.freedBytes;
-        try {
-          if (entry.list().length === 0) {
-            entry.delete();
+        if (subIsMedia) {
+          try {
+            if (entry.list().length === 0) {
+              entry.delete();
+            }
+          } catch {
+            // Keep system-owned subdirectory if Android locks it
           }
-        } catch {
-          // Keep system-owned subdirectory if Android locks it
         }
       } else if (entry instanceof File) {
+        if (!isSafeCacheFileToManage(entry.uri, insideMediaDir)) continue;
         const size = typeof entry.size === 'number' && entry.size > 0 ? entry.size : 0;
         try {
           entry.delete();

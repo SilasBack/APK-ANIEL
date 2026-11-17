@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -44,6 +44,11 @@ export function StorageCleanupModal({ visible, onClose, onStatsUpdated }: Props)
     exceedsLimit: false,
   });
 
+  const onStatsUpdatedRef = useRef(onStatsUpdated);
+  useEffect(() => {
+    onStatsUpdatedRef.current = onStatsUpdated;
+  }, [onStatsUpdated]);
+
   useEffect(() => {
     if (!visible) return;
     let active = true;
@@ -57,7 +62,7 @@ export function StorageCleanupModal({ visible, onClose, onStatsUpdated }: Props)
         if (!active) return;
         setStats(nextStats);
         setAutoCleanup(enabled);
-        onStatsUpdated?.(nextStats);
+        onStatsUpdatedRef.current?.(nextStats);
       } finally {
         if (active) setLoading(false);
       }
@@ -65,7 +70,7 @@ export function StorageCleanupModal({ visible, onClose, onStatsUpdated }: Props)
     return () => {
       active = false;
     };
-  }, [visible, onStatsUpdated]);
+  }, [visible]);
 
   async function handleToggleAuto(next: boolean) {
     setAutoCleanup(next);

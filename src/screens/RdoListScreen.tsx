@@ -300,7 +300,7 @@ export function RdoListScreen({ session, onSelectRdo, onCreateRdo, onLogout }: P
       <StorageCleanupModal
         visible={cleanupVisible}
         onClose={() => setCleanupVisible(false)}
-        onStatsUpdated={(next) => setStorageStats(next)}
+        onStatsUpdated={setStorageStats}
       />
     </SafeAreaView>
   );
