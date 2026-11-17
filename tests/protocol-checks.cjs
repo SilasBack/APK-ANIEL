@@ -7,6 +7,8 @@ function load(relative){const filename=path.resolve(root,relative);if(cache.has(
  if(id.endsWith('/constants/config'))return {CONFIG:config};
  if(id==='@react-native-async-storage/async-storage')return {__esModule:true,default:{getItem:async k=>memory.get(k)??null,setItem:async(k,v)=>memory.set(k,v),removeItem:async k=>memory.delete(k)}};
  if(id==='expo-secure-store')return {getItemAsync:async k=>vault.get(k)??null,setItemAsync:async(k,v)=>vault.set(k,v),deleteItemAsync:async k=>vault.delete(k)};
+ if(id==='expo-file-system')return {File:class MockFile{constructor(uri){this.uri=uri;}async bytes(){return new Uint8Array([1,2,3]);}}};
+ if(id==='expo-file-system/legacy')return {readAsStringAsync:async()=>'AQID',EncodingType:{Base64:'base64'}};
  if(id==='react-native')return {Platform:{OS:'android',Version:36}};
  if(id.startsWith('.'))return load(path.relative(root,path.resolve(path.dirname(filename),id))+'.ts');
  return require(id);
@@ -41,9 +43,18 @@ async function run(){
  await storage.setStoredSession({...actor,data:{senha:'nested-password',anything:'value'}});assert.ok(!memory.get('@aniel_active_session').includes('password'));assert.ok(!memory.get('@aniel_active_session').includes('data'));assert.equal((await storage.getStoredSession()).password,'test-password');
  await storage.removeSavedLogin(actor.login);assert.equal((await storage.getSavedLogins()).length,0);
  const detail=load('src/services/detailWorkflow.ts');
+ const fileUpload=load('src/services/fileUpload.ts');
+ const testBytes=fileUpload.base64ToUint8Array('AQIDBAU=');
+ assert.equal(testBytes.length, 5);
+ assert.equal(testBytes[0], 1);
+ const part=await fileUpload.createFormDataFilePart({ name:'foto.jpg', uri:'file:///dummy.jpg', type:'image/jpeg' });
+ assert.equal(part.name,'foto.jpg');
+ assert.equal(typeof part.bytes,'function');
+ const readBytes=await part.bytes();
+ assert.ok(readBytes instanceof Uint8Array);
  const built=detail.buildNewDetailAnswer(rdo,actor,{id:'test-device'},{template:{id:1,titulo:'Test'},protocol:'Test',questions:[{question:{id:2,tipo:'Foto',obrigatoria:'S'},value:'',choices:[],images:[{id:'image1',uri:'file:///sample.jpg',mimeType:'image/jpeg'}]}],state:'pending'});
  assert.equal(built.uploadFiles[0].type,'image/jpeg');assert.equal(built.uploadFiles[0].name,'image1.jpg');assert.equal(built.answerPayload.respostas[0].multi[0].urlfoto,'image1.jpg');
  assert.throws(()=>detail.buildSavedSignatureAnswer(rdo,{respostas:[]},{id:99},'data:image/png;base64,abc',actor,{id:'test-device'}));
- console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre. Nenhuma conexão real.');
+ console.log('PASS: cancelamento e duplicatas; códigos e reconciliação de criação; recusa sem exposição de senha; listas inválidas; migração das credenciais para o cofre; compatibilidade de multipart upload. Nenhuma conexão real.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});

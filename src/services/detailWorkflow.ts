@@ -1,6 +1,7 @@
 import { CONFIG } from '../constants/config';
 import { ClientDevice, LoginSession, RdoSummary } from '../types';
 import { ApiError, buildVersionedUri, sendAuthenticatedAsync, handleResponse } from './apiClient';
+import { createFormDataFilePart, UploadFileItem } from './fileUpload';
 
 const QUESTION_TYPES = [
   'Texto',
@@ -583,7 +584,7 @@ export function buildNewDetailAnswer(
 export async function saveRdoDetailMultipartAsync(
   session: LoginSession,
   answerPayload: any,
-  files: { name: string; uri: string; type: string }[] = []
+  files: UploadFileItem[] = []
 ): Promise<any> {
   const url = buildVersionedUri('AnielTV.Touch.WebApi/api/Quiz/SetQuiz');
   const envelope = {
@@ -602,12 +603,9 @@ export async function saveRdoDetailMultipartAsync(
   formData.append('json', JSON.stringify(envelope));
 
   for (const file of files) {
+    const part = await createFormDataFilePart(file);
     // @ts-ignore
-    formData.append(file.name, {
-      uri: file.uri,
-      name: file.name,
-      type: file.type || 'image/png',
-    });
+    formData.append(file.name, part);
   }
 
   const response = await fetch(url, {
@@ -618,6 +616,6 @@ export async function saveRdoDetailMultipartAsync(
     body: formData,
   });
 
-  const result = await handleResponse(response,[session.password,CONFIG.TOUCH_TOKEN]);
-  return getField(result,'valor') ?? result;
+  const result = await handleResponse(response, [session.password, CONFIG.TOUCH_TOKEN]);
+  return getField(result, 'valor') ?? result;
 }

@@ -14,6 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LoginSession, RdoSummary, RdoAttachment } from '../types';
 import { getRdoAttachmentsAsync, handleResponse } from '../services/apiClient';
 import { CONFIG } from '../constants/config';
+import { createFormDataFilePart } from '../services/fileUpload';
 
 interface Props {
   session: LoginSession;
@@ -117,12 +118,13 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
       };
 
       formData.append('json', JSON.stringify(envelope));
-      // @ts-ignore
-      formData.append(doc.uuId, {
-        uri,
+      const part = await createFormDataFilePart({
         name: filename,
+        uri,
         type: mime,
       });
+      // @ts-ignore
+      formData.append(doc.uuId, part);
 
       // Post to upload endpoint
       const base = CONFIG.BASE_URL.replace(/\/+$/, '');
