@@ -25,37 +25,14 @@ interface Props {
   onSuccess: () => void;
 }
 
-function toHHMM(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-}
-
-function parseHHMMOnToday(text: string): Date | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
-  const d = new Date();
-  d.setHours(h, min, 0, 0);
-  return d;
-}
-
 export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props) {
   const { colors } = useTheme();
   const styles = useThemedStyles(baseStyles);
   const insets = useSafeAreaInsets();
 
-  const initialEnd = new Date();
-  const initialStart =
-    parseServerDate(rdo.raw?.horaInicio) || new Date(initialEnd.getTime() - 15 * 60 * 1000);
-
   const [endings, setEndings] = useState<Encerramento[]>([]);
   const [loadingEndings, setLoadingEndings] = useState(true);
   const [selectedEnding, setSelectedEnding] = useState<Encerramento | null>(null);
-  const [startTimeText, setStartTimeText] = useState<string>(toHHMM(initialStart));
-  const [endTimeText, setEndTimeText] = useState<string>(toHHMM(initialEnd));
   const [observation, setObservation] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -79,20 +56,19 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function resolveAutomaticTimes(): { startDate: Date; endDate: Date } {
+    const endDate = new Date();
+    const parsedStart = parseServerDate(rdo.raw?.horaInicio);
+    const startDate =
+      parsedStart && parsedStart.getTime() <= endDate.getTime()
+        ? parsedStart
+        : new Date(endDate.getTime() - 15 * 60 * 1000);
+    return { startDate, endDate };
+  }
+
   function handleConfirm() {
     if (!selectedEnding) {
       Alert.alert('Atenção', 'Selecione o motivo de encerramento.');
-      return;
-    }
-
-    const startDate = parseHHMMOnToday(startTimeText);
-    const endDate = parseHHMMOnToday(endTimeText);
-    if (!startDate || !endDate) {
-      Alert.alert('Horário inválido', 'Informe Hora Início e Hora Término no formato HH:mm (ex: 09:30).');
-      return;
-    }
-    if (endDate.getTime() < startDate.getTime()) {
-      Alert.alert('Horário inválido', 'A Hora Término precisa ser igual ou posterior à Hora Início.');
       return;
     }
 
@@ -108,7 +84,14 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
       `Deseja realmente baixar e encerrar o RDO #${rdo.number} com o encerramento "${selectedEnding.descricao}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Confirmar e Baixar', style: 'default', onPress: () => void executeBaixa(startDate, endDate) },
+        {
+          text: 'Confirmar e Baixar',
+          style: 'default',
+          onPress: () => {
+            const { startDate, endDate } = resolveAutomaticTimes();
+            void executeBaixa(startDate, endDate);
+          },
+        },
       ]
     );
   }
@@ -174,39 +157,6 @@ export function BaixarAtividadeScreen({ session, rdo, onBack, onSuccess }: Props
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Técnico Responsável:</Text>
               <Text style={styles.summaryValue}>{session.name}</Text>
-            </View>
-          </View>
-
-          {/* Horários de Atendimento */}
-          <View style={styles.card}>
-            <Text style={styles.cardHeader}>Horário de Execução</Text>
-            <View style={styles.timeRow}>
-              <View style={styles.timeCol}>
-                <Text style={styles.timeLabel}>Hora Início (HH:mm)</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={startTimeText}
-                  onChangeText={setStartTimeText}
-                  placeholder="09:00"
-                  placeholderTextColor={colors.placeholder}
-                  keyboardType="numbers-and-punctuation"
-                  maxLength={5}
-                  editable={!submitting}
-                />
-              </View>
-              <View style={styles.timeCol}>
-                <Text style={styles.timeLabel}>Hora Término (HH:mm)</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={endTimeText}
-                  onChangeText={setEndTimeText}
-                  placeholder="10:00"
-                  placeholderTextColor={colors.placeholder}
-                  keyboardType="numbers-and-punctuation"
-                  maxLength={5}
-                  editable={!submitting}
-                />
-              </View>
             </View>
           </View>
 
@@ -358,31 +308,6 @@ const baseStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#1A202C',
-  },
-  timeRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  timeCol: {
-    flex: 1,
-  },
-  timeLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#4A5568',
-    marginBottom: 6,
-  },
-  timeInput: {
-    backgroundColor: '#F7FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 44,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1A202C',
-    textAlign: 'center',
   },
   emptyText: {
     fontSize: 13,
