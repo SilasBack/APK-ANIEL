@@ -570,7 +570,8 @@ export function buildNewDetailAnswer(
   rdo: RdoSummary,
   session: LoginSession,
   device: ClientDevice,
-  draft: DetailDraft
+  draft: DetailDraft,
+  options?: { allowIncomplete?: boolean }
 ): { answerPayload: any; uploadFiles: { name: string; uri: string; type: string }[] } {
   const answers: any[] = [];
   const uploadFiles: { name: string; uri: string; type: string }[] = [];
@@ -641,7 +642,7 @@ export function buildNewDetailAnswer(
       }
     }
 
-    if (isRequiredQuestion(q) && response === null && selected === null && multi.length === 0) {
+    if (!options?.allowIncomplete && isRequiredQuestion(q) && response === null && selected === null && multi.length === 0) {
       throw new Error(`Pergunta obrigatória não respondida: ${getText(q, 'pergunta')}`);
     }
 
