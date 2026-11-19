@@ -368,15 +368,39 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
           images: [],
         }));
       const newDraft: DetailDraft = {
+        registerOnServer: true,
         template: quiz,
         protocol: listName.trim(),
         questions,
         state: 'pending',
         savedAt: new Date().toLocaleTimeString('pt-BR'),
       };
-      const next = { ...draftsRef.current, [quizId]: newDraft };
-      if (!await persistLocalState(next)) return;
-      setDraftsByQuizId(next);
+
+      try {
+        const device = await getClientDevice();
+        const { answerPayload } = buildNewDetailAnswer(rdo, session, device, newDraft);
+        const created = await saveRdoDetailMultipartAsync(session, answerPayload, []);
+        setNewListTemplate(null);
+        setEditingQuizId(null);
+        setMessage(`Questionário "${newDraft.protocol}" criado e salvo no servidor.`);
+        await loadFromServer();
+        const createdKey =
+          getText(created, 'id') || getText(created, 'protocolo') || newDraft.protocol;
+        if (createdKey) {
+          setExpandedSavedIds((prev) => ({ ...prev, [createdKey]: true }));
+        }
+        return;
+      } catch (err: any) {
+        const localDraft: DetailDraft = { ...newDraft, registerOnServer: false };
+        const next = { ...draftsRef.current, [quizId]: localDraft };
+        if (!await persistLocalState(next)) return;
+        setDraftsByQuizId(next);
+        setError(
+          err?.message
+            ? `Não foi possível salvar imediatamente no servidor (${err.message}). Rascunho aberto no aparelho.`
+            : 'Não foi possível salvar imediatamente no servidor. Rascunho aberto no aparelho.'
+        );
+      }
     }
     setNewListTemplate(null);
     setEditingQuizId(quizId);
@@ -1432,7 +1456,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
             <TextInput value={newListName} onChangeText={setNewListName}
               placeholder="Digite o nome da lista" placeholderTextColor={colors.textSecondary}
               style={{ color: colors.text, borderWidth: 1, borderColor: colors.textSecondary, borderRadius: 8, padding: 12 }} />
-            <Text style={styles.templateDesc}>Responder abre o formulário e salva o rascunho neste aparelho. Após preencher, envie ao servidor.</Text>
+            <Text style={styles.templateDesc}>Ao criar, o questionário será salvo imediatamente no servidor para preenchimento.</Text>
             <TouchableOpacity style={styles.primaryBtn} disabled={busy || !newListName.trim()}
               onPress={async () => {
                 if (creatingListRef.current || !newListTemplate || !newListName.trim()) return;
@@ -1441,7 +1465,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                 try { await handleOpenTemplate(newListTemplate, newListName); }
                 finally { creatingListRef.current = false; setBusy(false); }
               }}>
-              <Text style={styles.primaryBtnText}>{busy ? 'Salvando…' : 'Responder'}</Text>
+              <Text style={styles.primaryBtnText}>{busy ? 'Salvando no servidor…' : 'Criar e salvar no servidor'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryBtnLarge} disabled={busy} onPress={() => setNewListTemplate(null)}>
               <Text style={styles.secondaryBtnLargeText}>Cancelar</Text>

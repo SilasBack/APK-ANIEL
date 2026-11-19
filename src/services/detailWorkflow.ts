@@ -559,6 +559,7 @@ export interface QuestionDraftItem {
 }
 
 export interface DetailDraft {
+  registerOnServer?: boolean;
   template: any;
   protocol: string;
   questions: QuestionDraftItem[];
@@ -641,7 +642,7 @@ export function buildNewDetailAnswer(
       }
     }
 
-    if (isRequiredQuestion(q) && response === null && selected === null && multi.length === 0) {
+    if (!draft.registerOnServer && isRequiredQuestion(q) && response === null && selected === null && multi.length === 0) {
       throw new Error(`Pergunta obrigatória não respondida: ${getText(q, 'pergunta')}`);
     }
 
@@ -689,7 +690,7 @@ export function buildNewDetailAnswer(
     isRepeticao: false,
     obrigarImprodutivo: getBool(draft.template, 'obrigarImprodutivo'),
     deInicioAtendimento: false,
-    isEmPreenchimento: false,
+    isEmPreenchimento: Boolean(draft.registerOnServer),
     respostas: answers,
     producoes: [],
     materiais: [],
