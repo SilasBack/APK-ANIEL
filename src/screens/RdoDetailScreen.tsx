@@ -2,17 +2,20 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { LoginSession, RdoSummary, RdoAttachment } from '../types';
 import {
+  cancelRdoAsync,
   getRdoAttachmentsAsync,
   isVideoAttachment,
   removeRdoAttachmentAsync,
@@ -32,6 +35,7 @@ interface Props {
   onOpenQuizDetail: () => void;
   onOpenBaixar: () => void;
   onOpenAttachments: () => void;
+  onCancelled?: () => void;
 }
 
 export function RdoDetailScreen({
@@ -41,6 +45,7 @@ export function RdoDetailScreen({
   onOpenQuizDetail,
   onOpenBaixar,
   onOpenAttachments,
+  onCancelled,
 }: Props) {
   const { colors } = useTheme();
   const styles = useThemedStyles(baseStyles);
@@ -49,6 +54,9 @@ export function RdoDetailScreen({
   const [hasServerVideo, setHasServerVideo] = useState<boolean | null>(null);
   const [currentStatus, setCurrentStatus] = useState(rdo.status);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
   const [activeVideo, setActiveVideo] = useState<{
     url: string;
     title: string;
@@ -85,6 +93,35 @@ export function RdoDetailScreen({
   useEffect(() => {
     checkAttachments();
   }, []);
+
+  async function handleConfirmCancelRdo() {
+    const trimmed = cancelReason.trim();
+    if (!trimmed) {
+      Alert.alert('Motivo obrigatório', 'Informe o motivo do cancelamento do RDO.');
+      return;
+    }
+    if (trimmed.length > 4000) {
+      Alert.alert('Motivo muito longo', 'O motivo deve ter no máximo 4.000 caracteres.');
+      return;
+    }
+
+    setCancelling(true);
+    try {
+      await cancelRdoAsync(session, rdo, trimmed);
+      setCancelModalVisible(false);
+      setCancelReason('');
+      Alert.alert('RDO cancelado', `O RDO #${rdo.number} foi cancelado no servidor.`, [
+        { text: 'OK', onPress: () => (onCancelled ?? onBack)() },
+      ]);
+    } catch (err: any) {
+      Alert.alert(
+        'Erro ao cancelar RDO',
+        err?.message || 'Não foi possível cancelar o RDO no servidor.'
+      );
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   async function handleStatusChange(targetStatus: 'Deslocando' | 'Atendendo' | 'Atendido') {
     const label =
@@ -375,7 +412,79 @@ export function RdoDetailScreen({
           </View>
           <MaterialIcons name="chevron-right" size={22} color={colors.iconMuted} />
         </TouchableOpacity>
+
+        {!isClosed && currentStatus !== 'Cancelado' && (
+          <TouchableOpacity
+            style={styles.cancelMenuItem}
+            onPress={() => {
+              setCancelReason('');
+              setCancelModalVisible(true);
+            }}
+            disabled={updatingStatus || cancelling}
+          >
+            <View style={[styles.menuIconCircle, { backgroundColor: colors.dangerSoft }]}>
+              <MaterialIcons name="cancel" size={22} color={colors.danger} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={[styles.menuTitle, { color: colors.danger }]}>Cancelar RDO</Text>
+              <Text style={styles.menuDesc}>
+                Cancelar este RDO no servidor informando o motivo
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={22} color={colors.danger} />
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      <Modal
+        visible={cancelModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!cancelling) setCancelModalVisible(false);
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Cancelar RDO #{rdo.number}</Text>
+            <Text style={styles.modalSubtitle}>
+              Informe o motivo do cancelamento para enviar ao servidor:
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              multiline
+              numberOfLines={4}
+              maxLength={4000}
+              placeholder="Digite o motivo / observação do cancelamento..."
+              placeholderTextColor={colors.placeholder}
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              textAlignVertical="top"
+              editable={!cancelling}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalSecondaryBtn}
+                onPress={() => setCancelModalVisible(false)}
+                disabled={cancelling}
+              >
+                <Text style={styles.modalSecondaryText}>Voltar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalDangerBtn, cancelling && styles.btnDisabled]}
+                onPress={handleConfirmCancelRdo}
+                disabled={cancelling}
+              >
+                {cancelling ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.modalDangerText}>Confirmar Cancelamento</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <VideoPlayerModal
         visible={Boolean(activeVideo)}
@@ -678,5 +787,82 @@ const baseStyles = StyleSheet.create({
     fontSize: 12,
     color: '#A0AEC0',
     marginTop: 1,
+  },
+  cancelMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 6,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FED7D7',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    padding: 18,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#1A202C',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#718096',
+    marginBottom: 12,
+  },
+  modalInput: {
+    backgroundColor: '#F7FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: '#1A202C',
+    minHeight: 100,
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalSecondaryBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#EDF2F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalSecondaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4A5568',
+  },
+  modalDangerBtn: {
+    flex: 1.4,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#E53E3E',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalDangerText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  btnDisabled: {
+    opacity: 0.65,
   },
 });

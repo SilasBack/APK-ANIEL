@@ -259,6 +259,10 @@ function AppContent() {
             onOpenQuizDetail={() => setCurrentScreen('nativeRdoDetail')}
             onOpenBaixar={() => setCurrentScreen('baixarAtividade')}
             onOpenAttachments={() => setCurrentScreen('attachments')}
+            onCancelled={() => {
+              clearRdoListCache();
+              setCurrentScreen('rdoList');
+            }}
           />
         )}
 
