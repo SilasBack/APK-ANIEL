@@ -1476,7 +1476,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
 
       {/* MODAL 2: Saved Answer Editor (Texto / Valor) */}
       <Modal
-        visible={Boolean(answerEditModal?.visible)}
+        visible={Boolean(answerEditModal?.visible) && !scannerModal?.visible}
         transparent
         animationType="slide"
         onRequestClose={() => setAnswerEditModal(null)}
@@ -1945,24 +1945,41 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
       <BarcodeScannerModal
         visible={Boolean(scannerModal?.visible)}
         title={scannerModal?.title || 'Escanear código de barras / serial'}
-        onScanned={(serial) => {
+        hasExistingValue={
+          scannerModal?.target === 'draft' && scannerModal.qIdx !== undefined
+            ? Boolean(activeDraft?.questions[scannerModal.qIdx]?.value.trim())
+            : scannerModal?.target === 'saved'
+            ? Boolean(answerEditModal?.value.trim())
+            : false
+        }
+        onScanned={(serial, mode = 'replace') => {
           if (!scannerModal) return;
           if (scannerModal.target === 'draft' && scannerModal.qIdx !== undefined) {
             const qIdx = scannerModal.qIdx;
             updateActiveDraftQuestion(qIdx, (prev) => {
               const current = prev.value.trim();
-              const nextVal = current.length > 0 ? `${current}\n${serial}` : serial;
+              const nextVal =
+                mode === 'append' && current.length > 0 ? `${current}\n${serial}` : serial;
               return { ...prev, value: nextVal };
             });
-            setMessage(`Serial ${serial} injetado no detalhamento.`);
+            setMessage(
+              mode === 'append'
+                ? `Serial ${serial} adicionado ao detalhamento.`
+                : `Serial ${serial} inserido no detalhamento.`
+            );
           } else if (scannerModal.target === 'saved') {
             setAnswerEditModal((prev) => {
               if (!prev) return null;
               const current = prev.value.trim();
-              const nextVal = current.length > 0 ? `${current}\n${serial}` : serial;
+              const nextVal =
+                mode === 'append' && current.length > 0 ? `${current}\n${serial}` : serial;
               return { ...prev, value: nextVal };
             });
-            setMessage(`Serial ${serial} adicionado para alteração.`);
+            setMessage(
+              mode === 'append'
+                ? `Serial ${serial} adicionado para alteração.`
+                : `Serial ${serial} substituído para alteração.`
+            );
           }
           setScannerModal(null);
         }}

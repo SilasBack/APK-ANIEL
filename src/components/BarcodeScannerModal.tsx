@@ -35,13 +35,15 @@ const COMMERCIAL_PRODUCT_TYPES = new Set(['ean13', 'ean8', 'upc_a', 'upc_e', 'it
 interface Props {
   visible: boolean;
   title?: string;
-  onScanned: (serial: string) => void;
+  hasExistingValue?: boolean;
+  onScanned: (serial: string, mode?: 'replace' | 'append') => void;
   onClose: () => void;
 }
 
 export function BarcodeScannerModal({
   visible,
   title = 'Escanear código de barras / serial',
+  hasExistingValue = false,
   onScanned,
   onClose,
 }: Props) {
@@ -103,9 +105,9 @@ export function BarcodeScannerModal({
     setScannedType(normalizedType ? normalizedType.toUpperCase() : null);
   }
 
-  function handleConfirmInject() {
+  function handleConfirmInject(mode: 'replace' | 'append' = 'replace') {
     if (scannedSerial) {
-      onScanned(scannedSerial);
+      onScanned(scannedSerial, mode);
       setScannedSerial(null);
       setScannedType(null);
       onClose();
@@ -217,18 +219,32 @@ export function BarcodeScannerModal({
               <View style={styles.scannedActions}>
                 <TouchableOpacity
                   style={styles.injectBtn}
-                  onPress={handleConfirmInject}
+                  onPress={() => handleConfirmInject('replace')}
                 >
                   <MaterialIcons name="done" size={20} color="#FFF" />
-                  <Text style={styles.injectBtnText}>Injetar no detalhamento</Text>
+                  <Text style={styles.injectBtnText}>
+                    {hasExistingValue ? 'Substituir' : 'Injetar no detalhamento'}
+                  </Text>
                 </TouchableOpacity>
+
+                {hasExistingValue && (
+                  <TouchableOpacity
+                    style={styles.appendBtn}
+                    onPress={() => handleConfirmInject('append')}
+                  >
+                    <MaterialIcons name="add" size={20} color="#FFF" />
+                    <Text style={styles.injectBtnText}>Adicionar</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={styles.rescanBtn}
                   onPress={handleRescan}
                 >
                   <MaterialIcons name="refresh" size={20} color="#2D3748" />
-                  <Text style={styles.rescanBtnText}>Ler outro código</Text>
+                  <Text style={styles.rescanBtnText}>
+                    {hasExistingValue ? 'Outro' : 'Ler outro código'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -502,6 +518,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     gap: 6,
+  },
+  appendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2B6CB0',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 4,
   },
   injectBtnText: {
     color: '#FFF',
