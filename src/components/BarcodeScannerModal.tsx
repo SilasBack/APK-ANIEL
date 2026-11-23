@@ -9,7 +9,28 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { CameraView, Camera } from 'expo-camera';
+import { CameraView, Camera, BarcodeType } from 'expo-camera';
+
+const SERIAL_BARCODE_TYPES: BarcodeType[] = [
+  'code128',
+  'code39',
+  'code93',
+  'qr',
+  'datamatrix',
+  'pdf417',
+  'codabar',
+];
+
+const ALL_BARCODE_TYPES: BarcodeType[] = [
+  ...SERIAL_BARCODE_TYPES,
+  'ean13',
+  'ean8',
+  'upc_a',
+  'upc_e',
+  'itf14',
+];
+
+const COMMERCIAL_PRODUCT_TYPES = new Set(['ean13', 'ean8', 'upc_a', 'upc_e', 'itf14']);
 
 interface Props {
   visible: boolean;
@@ -26,6 +47,8 @@ export function BarcodeScannerModal({
 }: Props) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scannedSerial, setScannedSerial] = useState<string | null>(null);
+  const [scannedType, setScannedType] = useState<string | null>(null);
+  const [serialOnlyMode, setSerialOnlyMode] = useState<boolean>(true);
   const [torch, setTorch] = useState<boolean>(false);
 
   useEffect(() => {
@@ -56,27 +79,42 @@ export function BarcodeScannerModal({
 
   function handleClose() {
     setScannedSerial(null);
+    setScannedType(null);
     onClose();
   }
 
-  function handleBarcodeScanned({ data }: { data: string }) {
+  function handleBarcodeScanned({ data, type }: { data: string; type?: string }) {
     if (!data) return;
-    const clean = data.trim().toUpperCase();
-    if (clean.length > 0) {
-      setScannedSerial(clean);
+    const normalizedType = (type || '').toLowerCase();
+    let clean = data.trim().toUpperCase().replace(/^(?:NS|SN|S\/N)\s*:\s*/i, '');
+    if (!clean) return;
+
+    if (serialOnlyMode) {
+      if (COMMERCIAL_PRODUCT_TYPES.has(normalizedType)) {
+        return;
+      }
+      // Ignore Brazilian commercial EAN-13 product barcodes (789/790 + 10 digits)
+      if (/^789\d{10}$/.test(clean) || /^790\d{10}$/.test(clean)) {
+        return;
+      }
     }
+
+    setScannedSerial(clean);
+    setScannedType(normalizedType ? normalizedType.toUpperCase() : null);
   }
 
   function handleConfirmInject() {
     if (scannedSerial) {
       onScanned(scannedSerial);
       setScannedSerial(null);
+      setScannedType(null);
       onClose();
     }
   }
 
   function handleRescan() {
     setScannedSerial(null);
+    setScannedType(null);
   }
 
   if (!visible) return null;
@@ -138,19 +176,7 @@ export function BarcodeScannerModal({
               facing="back"
               enableTorch={torch}
               barcodeScannerSettings={{
-                barcodeTypes: [
-                  'code128',
-                  'code39',
-                  'qr',
-                  'ean13',
-                  'ean8',
-                  'upc_a',
-                  'upc_e',
-                  'itf14',
-                  'datamatrix',
-                  'pdf417',
-                  'codabar',
-                ],
+                barcodeTypes: serialOnlyMode ? SERIAL_BARCODE_TYPES : ALL_BARCODE_TYPES,
               }}
               onBarcodeScanned={scannedSerial ? undefined : handleBarcodeScanned}
             />
@@ -180,7 +206,9 @@ export function BarcodeScannerModal({
             <View style={styles.scannedBox}>
               <View style={styles.scannedBadge}>
                 <MaterialIcons name="check-circle" size={18} color="#22543D" />
-                <Text style={styles.scannedBadgeText}>Serial lido com sucesso!</Text>
+                <Text style={styles.scannedBadgeText}>
+                  Serial lido com sucesso!{scannedType ? ` (${scannedType})` : ''}
+                </Text>
               </View>
               <Text style={styles.scannedValue} selectable>
                 {scannedSerial}
@@ -208,11 +236,30 @@ export function BarcodeScannerModal({
             <View style={styles.instructionBox}>
               <MaterialIcons name="qr-code-scanner" size={28} color="#A0AEC0" />
               <Text style={styles.instructionText}>
-                Posicione o código de barras ou QR Code do equipamento no centro do quadro.
+                {serialOnlyMode
+                  ? 'Aponte para o código de barras do NS / SN ou QR Code.'
+                  : 'Aponte para qualquer código de barras ou QR Code.'}
               </Text>
               <Text style={styles.instructionHint}>
-                Compatível com seriais de Controladoras, Switches, APs e Nobreak.
+                {serialOnlyMode
+                  ? 'Modo Serial ativo: códigos EAN comerciais (ex: 789...) são ignorados.'
+                  : 'Modo amplo: aceita códigos comerciais EAN/UPC além de seriais.'}
               </Text>
+              <TouchableOpacity
+                style={styles.modeToggleBtn}
+                onPress={() => setSerialOnlyMode((prev) => !prev)}
+              >
+                <MaterialIcons
+                  name={serialOnlyMode ? 'filter-alt' : 'all-inclusive'}
+                  size={16}
+                  color="#08776F"
+                />
+                <Text style={styles.modeToggleText}>
+                  {serialOnlyMode
+                    ? 'Foco: Serial NS/SN (toque para ler todos)'
+                    : 'Foco: Todos os códigos (toque para só NS/SN)'}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -392,6 +439,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: 4,
+  },
+  modeToggleBtn: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E6F4F1',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#B2F5EA',
+  },
+  modeToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#08776F',
+    marginLeft: 6,
   },
   scannedBox: {
     backgroundColor: '#2D3748',
