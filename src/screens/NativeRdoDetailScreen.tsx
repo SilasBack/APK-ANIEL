@@ -547,7 +547,9 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
       setMessage('O servidor confirmou a alteração da resposta existente.');
       await loadFromServer();
     } catch (err: any) {
-      setError(err?.message || 'Não foi possível salvar a alteração da resposta.');
+      const msg = err?.message || 'Não foi possível salvar a alteração da resposta.';
+      setError(msg);
+      Alert.alert('Erro ao salvar', msg);
     } finally {
       setBusy(false);
     }
@@ -1952,7 +1954,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
             ? Boolean(answerEditModal?.value.trim())
             : false
         }
-        onScanned={(serial, mode = 'replace') => {
+        onScanned={async (serial, mode = 'replace') => {
           if (!scannerModal) return;
           if (scannerModal.target === 'draft' && scannerModal.qIdx !== undefined) {
             const qIdx = scannerModal.qIdx;
@@ -1967,21 +1969,36 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
                 ? `Serial ${serial} adicionado ao detalhamento.`
                 : `Serial ${serial} inserido no detalhamento.`
             );
+            setScannerModal(null);
           } else if (scannerModal.target === 'saved') {
-            setAnswerEditModal((prev) => {
-              if (!prev) return null;
-              const current = prev.value.trim();
-              const nextVal =
-                mode === 'append' && current.length > 0 ? `${current}\n${serial}` : serial;
-              return { ...prev, value: nextVal };
-            });
-            setMessage(
-              mode === 'append'
-                ? `Serial ${serial} adicionado para alteração.`
-                : `Serial ${serial} substituído para alteração.`
-            );
+            const currentModal = answerEditModal;
+            setScannerModal(null);
+            if (!currentModal) return;
+            const current = currentModal.value.trim();
+            const nextVal =
+              mode === 'append' && current.length > 0 ? `${current}\n${serial}` : serial;
+            setBusy(true);
+            setError('');
+            try {
+              await updateSavedAnswerOnServerAsync(
+                session,
+                currentModal.answer,
+                currentModal.row,
+                nextVal,
+                currentModal.selectedOptionId
+              );
+              setAnswerEditModal(null);
+              setMessage(`Serial ${serial} salvo no servidor.`);
+              await loadFromServer();
+            } catch (err: any) {
+              const msg = err?.message || 'Não foi possível salvar o serial no servidor.';
+              setError(msg);
+              setAnswerEditModal({ ...currentModal, value: nextVal, review: false });
+              Alert.alert('Erro ao enviar para o servidor', msg);
+            } finally {
+              setBusy(false);
+            }
           }
-          setScannerModal(null);
         }}
         onClose={() => setScannerModal(null)}
       />
