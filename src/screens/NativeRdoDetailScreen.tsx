@@ -1974,9 +1974,15 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
             const currentModal = answerEditModal;
             setScannerModal(null);
             if (!currentModal) return;
-            const current = currentModal.value.trim();
+            const currentTokens = currentModal.value
+              .split(/[\r\n;]+/)
+              .map((s) => s.trim())
+              .filter(Boolean);
             const nextVal =
-              mode === 'append' && current.length > 0 ? `${current}\n${serial}` : serial;
+              mode === 'append' && currentTokens.length > 0
+                ? [...currentTokens, serial].join(';')
+                : serial;
+            setAnswerEditModal({ ...currentModal, value: nextVal, review: true });
             setBusy(true);
             setError('');
             try {
@@ -1990,6 +1996,7 @@ export function NativeRdoDetailScreen({ session, rdo, closed = false, onBack }: 
               setAnswerEditModal(null);
               setMessage(`Serial ${serial} salvo no servidor.`);
               await loadFromServer();
+              Alert.alert('Serial salvo no servidor', `Novo valor enviado: ${nextVal}`);
             } catch (err: any) {
               const msg = err?.message || 'Não foi possível salvar o serial no servidor.';
               setError(msg);
