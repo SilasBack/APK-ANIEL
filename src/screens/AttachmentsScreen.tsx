@@ -23,6 +23,7 @@ import { createFormDataFilePart } from '../services/fileUpload';
 import { detailImageSource } from '../services/detailWorkflow';
 import { VideoPlayerModal } from '../components/VideoPlayerModal';
 import { PhotoViewerModal } from '../components/PhotoViewerModal';
+import { compressVideoIfNeededAsync } from '../services/videoCompression';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 interface Props {
@@ -43,6 +44,7 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
   const styles = useThemedStyles(baseStyles);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [compressingStatus, setCompressingStatus] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<RdoAttachment[]>([]);
   const [activeVideo, setActiveVideo] = useState<{
@@ -107,7 +109,7 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
   }
 
   async function handlePickMedia() {
-    if (uploading) return;
+    if (uploading || compressingStatus) return;
     Alert.alert('Novo Anexo', 'Selecione o tipo de mídia para anexar:', [
       {
         text: 'Vídeo da Obra (MP4)',
@@ -137,15 +139,59 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const mime=asset.mimeType || (asset.type==='video' ? 'video/mp4' : 'image/jpeg');
-        const ext=({'video/mp4':'mp4','video/quicktime':'mov','image/jpeg':'jpg','image/png':'png','image/webp':'webp'} as Record<string,string>)[mime];
-        if (!ext) throw new Error('Formato de arquivo não suportado. Use MP4, MOV, JPEG, PNG ou WebP.');
-        if (!asset.fileSize || asset.fileSize>=CONFIG.ATTACHMENT_LIMIT_BYTES) throw new Error('O arquivo deve ter menos de 100 MB e tamanho identificável.');
-        await uploadFile(asset.uri, `anexo_${Date.now()}.${ext}`,mime,asset.fileSize);
+        const isVideo = mediaTypes === 'videos' || asset.type === 'video';
+        const mime = asset.mimeType || (isVideo ? 'video/mp4' : 'image/jpeg');
+        const ext = ({
+          'video/mp4': 'mp4',
+          'video/quicktime': 'mov',
+          'image/jpeg': 'jpg',
+          'image/png': 'png',
+          'image/webp': 'webp',
+        } as Record<string, string>)[mime];
 
+        if (isVideo) {
+          let finalUri = asset.uri;
+          let finalMime = ext ? mime : 'video/mp4';
+          let finalExt = ext || 'mp4';
+          let finalSize = asset.fileSize || 0;
+
+          if (!finalSize || finalSize >= CONFIG.ATTACHMENT_LIMIT_BYTES) {
+            const origMb = finalSize > 0 ? `${(finalSize / 1048576).toFixed(1)} MB` : '> 100 MB';
+            setCompressingStatus(`Comprimindo vídeo (${origMb} → ~90 MB): 0%`);
+            try {
+              const compressed = await compressVideoIfNeededAsync(
+                asset.uri,
+                asset.fileSize,
+                asset.duration,
+                (pct, pass) => {
+                  const passLabel = pass === 2 ? ' (ajuste fino)' : '';
+                  setCompressingStatus(`Comprimindo vídeo (${origMb} → ~90 MB)${passLabel}: ${pct}%`);
+                }
+              );
+              finalUri = compressed.uri;
+              finalSize = compressed.size;
+              if (compressed.compressed) {
+                finalMime = compressed.mime;
+                finalExt = compressed.ext;
+              }
+            } finally {
+              setCompressingStatus(null);
+            }
+          }
+
+          await uploadFile(finalUri, `anexo_${Date.now()}.${finalExt}`, finalMime, finalSize);
+          return;
+        }
+
+        if (!ext) throw new Error('Formato de arquivo não suportado. Use MP4, MOV, JPEG, PNG ou WebP.');
+        if (!asset.fileSize || asset.fileSize >= CONFIG.ATTACHMENT_LIMIT_BYTES) {
+          throw new Error('O arquivo deve ter menos de 100 MB e tamanho identificável.');
+        }
+        await uploadFile(asset.uri, `anexo_${Date.now()}.${ext}`, mime, asset.fileSize);
       }
     } catch (err: any) {
-      Alert.alert('Erro', 'Falha ao selecionar arquivo: ' + err?.message);
+      setCompressingStatus(null);
+      Alert.alert('Erro', 'Falha ao selecionar/comprimir arquivo: ' + (err?.message || 'erro desconhecido'));
     }
   }
 
@@ -221,15 +267,21 @@ export function AttachmentsScreen({ session, rdo, onBack }: Props) {
           <Text style={styles.appBarTitle}>Anexos do RDO</Text>
           <Text style={styles.appBarSubtitle}>RDO #{rdo.number}</Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={handlePickMedia} disabled={uploading}>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={handlePickMedia}
+          disabled={uploading || Boolean(compressingStatus)}
+        >
           <MaterialIcons name="add" size={24} color={colors.primarySoftText} />
         </TouchableOpacity>
       </View>
 
-      {uploading && (
+      {(compressingStatus || uploading) && (
         <View style={styles.uploadingBar}>
           <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={styles.uploadingText}>Enviando anexo para o servidor...</Text>
+          <Text style={styles.uploadingText}>
+            {compressingStatus || 'Enviando anexo para o servidor...'}
+          </Text>
         </View>
       )}
 
